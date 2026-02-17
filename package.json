@@ -1,0 +1,39 @@
+{
+  "name": "zotero-merge-supplementary-pdf",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Merge supplementary/supporting info PDFs into the main PDF attachment in Zotero",
+  "config": {
+    "addonName": "Merge Supplementary PDF",
+    "addonID": "merge-supplementary-pdf@joaofonseca.dev",
+    "addonRef": "mergesupppdf",
+    "addonInstance": "MergeSupplementaryPDF",
+    "prefsPrefix": "extensions.zotero.mergesupppdf"
+  },
+  "author": "Joao Fonseca",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jrjfonseca/zotero_merge_supplementary_plugin.git"
+  },
+  "homepage": "https://github.com/jrjfonseca/zotero_merge_supplementary_plugin#readme",
+  "license": "AGPL-3.0-or-later",
+  "scripts": {
+    "start": "zotero-plugin serve",
+    "build": "zotero-plugin build && tsc --noEmit",
+    "release": "zotero-plugin release"
+  },
+  "dependencies": {
+    "pdf-lib": "^1.17.1",
+    "zotero-plugin-toolkit": "^5.1.0-beta.13"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "zotero-plugin-scaffold": "^0.8.2",
+    "zotero-types": "^4.1.0-beta.4"
+  },
+  "prettier": {
+    "printWidth": 80,
+    "tabWidth": 2,
+    "endOfLine": "lf"
+  }
+}

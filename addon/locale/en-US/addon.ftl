@@ -1,0 +1,11 @@
+startup-begin = Merge Supplementary PDF is loading
+startup-finish = Merge Supplementary PDF is ready
+menuitem-merge-label = >> Merge Supplementary PDF <<
+merge-progress = Merging PDFs...
+merge-success = Successfully merged supplementary PDF into main document ({ $mainTitle })
+merge-error-no-item = Please select a single library item
+merge-error-not-enough-pdfs = Item must have exactly 2 PDF attachments (main + supplementary)
+merge-error-no-supplementary = Could not identify supplementary PDF. Rename the supplementary attachment to include "supplementary", "supporting", "SI", or "supp"
+merge-error-encrypted = One or more PDFs appear to be encrypted and cannot be merged
+merge-error-file-missing = PDF file not found on disk: { $path }
+merge-error-generic = Merge failed: { $message }
