@@ -1,3 +1,4 @@
+import { config } from "../package.json";
 import { initLocale } from "./utils/locale";
 import { registerMenu, unregisterMenu } from "./modules/menu";
 
@@ -9,27 +10,36 @@ async function onStartup() {
   ]);
   initLocale();
 
-  // If the main window is already open, register menu now
-  // (onMainWindowLoad won't fire for already-open windows)
+  // Native Zotero 9 menu API registers globally, once.
+  registerMenu();
+
+  // Make the menu label's Fluent strings resolvable in any already-open window.
   const win = Zotero.getMainWindow();
   if (win) {
-    registerMenu(win);
+    injectFTL(win);
   }
 
   addon.data.initialized = true;
 }
 
 function onMainWindowLoad(win: Window) {
-  registerMenu(win);
+  injectFTL(win);
 }
 
-function onMainWindowUnload(win: Window) {
-  unregisterMenu(win);
+function onMainWindowUnload(_win: Window) {
+  // Menu is registered globally; nothing window-specific to tear down.
 }
 
 function onShutdown() {
   addon.data.alive = false;
+  unregisterMenu();
   ztoolkit.unregisterAll();
+}
+
+// Register the plugin's FTL file with a window so native menu items
+// (which reference Fluent l10n IDs) display their labels.
+function injectFTL(win: Window) {
+  (win as any).MozXULElement?.insertFTLIfNeeded(`${config.addonRef}-addon.ftl`);
 }
 
 export default {

@@ -1,6 +1,6 @@
 # Zotero Merge Supplementary PDF
 
-A Zotero 8 plugin that merges a supplementary/supporting information PDF into the main PDF attachment of a library item.
+A Zotero 7/8/9 plugin that merges a supplementary/supporting information PDF into the main PDF attachment of a library item.
 
 ## What it does
 

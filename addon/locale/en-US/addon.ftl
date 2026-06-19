@@ -1,6 +1,10 @@
 startup-begin = Merge Supplementary PDF is loading
 startup-finish = Merge Supplementary PDF is ready
-menuitem-merge-label = >> Merge Supplementary PDF <<
+# XUL <menuitem> renders its `label` ATTRIBUTE, not the message value/text
+# content. A value-only message leaves the native MenuManager item blank, so
+# this must be an attribute-style Fluent message.
+menuitem-merge-label =
+    .label = >> Merge Supplementary PDF <<{ $reason }
 merge-progress = Merging PDFs...
 merge-success = Successfully merged supplementary PDF into main document ({ $mainTitle })
 merge-error-no-item = Please select a single library item
