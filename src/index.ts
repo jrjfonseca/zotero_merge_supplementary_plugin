@@ -10,6 +10,14 @@ if (!basicTool.getGlobal("Zotero")[config.addonInstance]) {
   defineGlobal("ztoolkit", () => {
     return _globalThis.addon.data.ztoolkit;
   });
+  // mammoth's bundled JSZip calls setImmediate, which Zotero's plugin
+  // sandbox lacks (it has setTimeout).
+  const g = globalThis as any;
+  if (typeof g.setImmediate === "undefined") {
+    _globalThis.setImmediate = (fn: (...a: unknown[]) => void, ...args: unknown[]) =>
+      g.setTimeout(fn, 0, ...args);
+    _globalThis.clearImmediate = (id: number) => g.clearTimeout(id);
+  }
   // @ts-expect-error - Plugin instance is not typed
   Zotero[config.addonInstance] = addon;
 }

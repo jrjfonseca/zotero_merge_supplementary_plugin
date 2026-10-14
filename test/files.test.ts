@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { strToU8, zipSync } from "fflate";
-import { extractDocumentsFromZip, safeFileName, sniff } from "../src/modules/fetch/files.ts";
+import { extractDocumentsFromZip, parseJATSCaptions, safeFileName, sniff } from "../src/modules/fetch/files.ts";
 import { makeDOCX, makePDF } from "./helpers.ts";
 
 test("sniffs file types from content", async () => {
@@ -40,4 +40,19 @@ test("safe file names", () => {
   assert.equal(safeFileName('a/b:c?.pdf'), "a_b_c_.pdf");
   assert.equal(safeFileName("Supplementary Information"), "Supplementary Information.pdf");
   assert.equal(safeFileName(""), "supplementary.pdf");
+});
+
+test("reads supplementary captions from JATS XML", () => {
+  const xml = `<supplementary-material id="MOESM1"><label>Supplementary Information</label><caption><p>Methods</p></caption><media xlink:href="x_MOESM1_ESM.pdf"/></supplementary-material>
+  <supplementary-material id="MOESM2"><media xlink:href="x_MOESM2_ESM.pdf"><caption><p>Reporting Summary</p></caption></media></supplementary-material>`;
+  assert.deepEqual(parseJATSCaptions(xml), {
+    "x_MOESM1_ESM.pdf": "Supplementary Information Methods",
+    "x_MOESM2_ESM.pdf": "Reporting Summary",
+  });
+});
+
+test("looks inside ZIP archives nested in ZIP archives", async () => {
+  const inner = zipSync({ "SI_1.pdf": await makePDF(1), "data.csv": strToU8("x") });
+  const outer = zipSync({ "article_supplemental_files.zip": inner, "fig1.jpg": strToU8("x") });
+  assert.deepEqual(extractDocumentsFromZip(outer).map((f) => f.name), ["SI_1.pdf"]);
 });

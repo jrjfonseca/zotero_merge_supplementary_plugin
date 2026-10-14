@@ -125,7 +125,7 @@ const REF_CONTAINER =
   /(^|[-_ ])(ref|refs|references?|citations?|bibliography|bib|cited)([-_ ]|$)/i;
 
 // Publisher paperwork that is listed with the SI but isn't SI.
-const NOT_SI_TEXT =
+export const NOT_SI_TEXT =
   /reporting\s+summary|peer\s+review\s+file|transparent\s+peer\s+review|review\s+history|author\s+checklist|editorial\s+(process|history)|copyright|license|permissions/i;
 
 const MAIN_PDF_TEXT =
@@ -289,7 +289,10 @@ export function extractSupplementaryLinks(
 
   // Visible links already judged on their text; the raw-HTML scan below
   // must not bring back ones rejected there (e.g. "Reporting Summary").
+  // Matched by file name too: the same file often appears under another host
+  // or path in the page data (e.g. Springer's static-content vs media CDN).
   const judged = new Set<string>();
+  const judgedNames = new Set<string>();
 
   for (const a of elements(doc.querySelectorAll("a[href], [data-href]"))) {
     const href = a.getAttribute("href") || a.getAttribute("data-href") || "";
@@ -299,6 +302,7 @@ export function extractSupplementaryLinks(
     const url = resolve(href, pageURL);
     if (!url || url === page || mainPDFs.has(url)) continue;
     judged.add(url);
+    judgedNames.add(fileNameOf(url).toLowerCase());
 
     const text = [
       a.textContent,
@@ -337,7 +341,13 @@ export function extractSupplementaryLinks(
 
   if (options.html) {
     for (const c of scanHTML(options.html, pageURL)) {
-      if (!mainPDFs.has(c.url) && !judged.has(c.url)) add(c);
+      if (
+        !mainPDFs.has(c.url) &&
+        !judged.has(c.url) &&
+        !judgedNames.has(fileNameOf(c.url).toLowerCase())
+      ) {
+        add(c);
+      }
     }
   }
 

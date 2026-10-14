@@ -74,12 +74,17 @@ const WANTED_IN_ZIP = /\.(pdf|docx?|odt|rtf)$/i;
  * directory, so archives that are streamed without one (Europe PMC) or cut
  * off part-way still yield every complete file.
  */
-export function extractDocumentsFromZip(bytes: Uint8Array): NamedFile[] {
+export function extractDocumentsFromZip(
+  bytes: Uint8Array,
+  depth = 0,
+): NamedFile[] {
   const out: NamedFile[] = [];
+  const nested: Uint8Array[] = [];
   const unzip = new Unzip((file) => {
     const base = file.name.split("/").pop() ?? file.name;
+    const isZip = /\.zip$/i.test(base) && depth < 2;
     if (
-      !WANTED_IN_ZIP.test(base) ||
+      !(WANTED_IN_ZIP.test(base) || isZip) ||
       file.name.startsWith("__MACOSX/") ||
       base.startsWith(".")
     ) {
@@ -89,7 +94,11 @@ export function extractDocumentsFromZip(bytes: Uint8Array): NamedFile[] {
     file.ondata = (err, data, final) => {
       if (err) return;
       chunks.push(data);
-      if (final) out.push({ name: base, bytes: concat(chunks) });
+      if (!final) return;
+      // An archive inside the archive (e.g. Europe PMC wrapping a
+      // publisher's "supplemental_files.zip").
+      if (isZip) nested.push(concat(chunks));
+      else out.push({ name: base, bytes: concat(chunks) });
     };
     file.start();
   });
@@ -99,6 +108,7 @@ export function extractDocumentsFromZip(bytes: Uint8Array): NamedFile[] {
   } catch {
     // Truncated or trailing garbage: keep whatever was complete.
   }
+  for (const zip of nested) out.push(...extractDocumentsFromZip(zip, depth + 1));
   return out;
 }
 
@@ -129,4 +139,16 @@ export function safeFileName(name: string, fallbackExt = "pdf"): string {
   if (!clean || /^\.+$/.test(clean)) clean = "supplementary";
   if (!/\.[a-z0-9]{2,5}$/i.test(clean)) clean += `.${fallbackExt}`;
   return clean;
+}
+
+/** File name -> caption of each supplementary file in JATS article XML. */
+export function parseJATSCaptions(xml: string): Record<string, string> {
+  const captions: Record<string, string> = {};
+  for (const m of xml.matchAll(/<supplementary-material\b[\s\S]*?<\/supplementary-material>/g)) {
+    const text = m[0].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    for (const href of m[0].matchAll(/xlink:href="([^"]+)"/g)) {
+      captions[href[1].split("/").pop()!] = text;
+    }
+  }
+  return captions;
 }

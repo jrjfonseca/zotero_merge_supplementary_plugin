@@ -2,6 +2,10 @@ import { config } from "../package.json";
 import { initLocale } from "./utils/locale";
 import { registerMenu, unregisterMenu } from "./modules/menu";
 import { registerAutoMerge, unregisterAutoMerge } from "./modules/autoMerge";
+import { convertToPDF } from "./modules/convert";
+import { fetchAndMergeItem } from "./modules/fetch";
+import { fetchPageBrowser } from "./modules/fetch/web";
+import { mergeItem, restoreItem } from "./modules/merge";
 
 async function onStartup() {
   await Promise.all([
@@ -27,6 +31,15 @@ async function onStartup() {
   if (win) {
     injectFTL(win);
   }
+
+  // For other plugins and the in-Zotero tests (test-zotero/).
+  addon.api = {
+    fetchAndMergeItem,
+    mergeItem,
+    restoreItem,
+    convertToPDF,
+    fetchPageBrowser,
+  };
 
   addon.data.initialized = true;
 }

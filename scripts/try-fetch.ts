@@ -13,6 +13,7 @@ import path from "node:path";
 import { PDFDocument } from "pdf-lib";
 import { docxToHTML, renderHTMLToPDF } from "../src/modules/convert/html.ts";
 import { Discovery, startURLs, type Net } from "../src/modules/fetch/discover.ts";
+import { parseJATSCaptions } from "../src/modules/fetch/files.ts";
 import { appendSupplements } from "../src/modules/pdf.ts";
 
 const UA = "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0";
@@ -79,9 +80,13 @@ const net: Net = {
     ).json();
     const hit = s?.resultList?.result?.find((r: any) => r.pmcid);
     if (!hit || hit.hasSuppl === "N") return null;
-    return net.download(`https://www.ebi.ac.uk/europepmc/webservices/rest/${hit.pmcid}/supplementaryFiles`);
+    const base = `https://www.ebi.ac.uk/europepmc/webservices/rest/${hit.pmcid}`;
+    const zip = await net.download(`${base}/supplementaryFiles`);
+    if (zip?.bytes) zip.captions = parseJATSCaptions(await (await fetch(`${base}/fullTextXML`)).text());
+    return zip;
   },
   parseHTML: parse,
+  sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
 };
 
 fs.mkdirSync(OUT, { recursive: true });

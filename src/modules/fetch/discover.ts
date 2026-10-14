@@ -18,6 +18,7 @@ import {
   findRedirect,
   guessedFileURLs,
   looksLikeChallenge,
+  NOT_SI_TEXT,
   type LinkCandidate,
 } from "./links";
 
@@ -35,6 +36,8 @@ export interface Download {
   /** Empty when the request failed */
   bytes?: Uint8Array;
   name?: string;
+  /** For archives: file name -> caption, when the source describes them */
+  captions?: Record<string, string>;
 }
 
 export interface Net {
@@ -43,8 +46,13 @@ export interface Net {
   /** Load a page in a real browser engine (scripts, bot checks, cookies) */
   renderPage(url: string): Promise<Page | null>;
   download(url: string, referrer?: string): Promise<Download | null>;
-  /** Europe PMC's ZIP of supplementary files for an open-access article */
+  /**
+   * Europe PMC's ZIP of supplementary files for an open-access article,
+   * with each file's caption when available
+   */
   europePMC(doi: string): Promise<Download | null>;
+  /** Wait (for retrying temporary server errors) */
+  sleep?(ms: number): Promise<void>;
   parseHTML(html: string): Document;
 }
 
@@ -56,6 +64,8 @@ export interface FoundFile extends NamedFile {
 }
 
 const MAX_PAGES = 6;
+// Statuses worth one more try: bot checks, rate limits, temporary errors.
+const REFUSED = new Set([401, 403, 429, 502, 503, 504]);
 const MAX_FILES = 20;
 
 function hostOf(url: string): string {
@@ -205,16 +215,19 @@ export class Discovery {
       });
       const dl = await this.net.download(c.url, referrer);
       if (dl?.bytes) await handle(c, dl);
-      else if (dl && (dl.status === 403 || dl.status === 401 || dl.status === 503)) {
-        refused.push(c);
-      }
+      else if (dl && REFUSED.has(dl.status)) refused.push(c);
     }
 
     // Bot check on the file host: pass it once in the browser engine (which
-    // shares cookies with plain requests), then try those files again.
-    if (refused.length && referrer && !this.rendered.has(referrer)) {
-      this.rendered.add(referrer);
-      await this.net.renderPage(referrer);
+    // shares cookies with plain requests), then try those files again. Also
+    // gives temporary errors ("try again in 30 seconds") time to clear.
+    if (refused.length) {
+      if (referrer && !this.rendered.has(referrer)) {
+        this.rendered.add(referrer);
+        await this.net.renderPage(referrer);
+      } else {
+        await this.net.sleep?.(5000);
+      }
       const retry = refused.splice(0);
       for (const c of retry) {
         const dl = await this.net.download(c.url, referrer);
@@ -233,9 +246,12 @@ export class Discovery {
       this.report("fetch-progress-pmc");
       const zip = await this.net.europePMC(this.doi);
       if (zip?.bytes && sniff(zip.bytes) === "zip") {
+        const captions = zip.captions ?? {};
         found = extractDocumentsFromZip(zip.bytes)
           .map((f) => ({ ...f, type: sniff(f.bytes), source: zip.url }))
-          .filter((f) => f.type === "pdf" || isConvertible(f.type));
+          .filter((f) => f.type === "pdf" || isConvertible(f.type))
+          // Drop "Reporting Summary", "Peer Review File" and the like.
+          .filter((f) => !NOT_SI_TEXT.test(captions[f.name] ?? ""));
       }
     }
 

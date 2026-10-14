@@ -3,6 +3,7 @@
 
 import { getHiddenBrowserClass, localBytes } from "../../utils/gecko";
 import type { Download, Net, Page } from "./discover";
+import { parseJATSCaptions } from "./files";
 import { looksLikeChallenge } from "./links";
 
 const MAX_FILE_BYTES = 200 * 1024 * 1024;
@@ -149,9 +150,20 @@ export async function downloadEuropePMCSupplements(
     return null;
   }
   if (!pmcid) return null;
-  return downloadFile(
+  const zip = await downloadFile(
     `https://www.ebi.ac.uk/europepmc/webservices/rest/${pmcid}/supplementaryFiles`,
   );
+  if (zip?.bytes) zip.captions = await europePMCCaptions(pmcid);
+  return zip;
+}
+
+/** File name -> caption of each supplementary file, from the article XML. */
+async function europePMCCaptions(pmcid: string): Promise<Record<string, string>> {
+  const xhr = await request(
+    `https://www.ebi.ac.uk/europepmc/webservices/rest/${pmcid}/fullTextXML`,
+    "text",
+  );
+  return xhr?.status === 200 ? parseJATSCaptions(String(xhr.responseText ?? "")) : {};
 }
 
 export const zoteroNet: Net = {
@@ -160,4 +172,5 @@ export const zoteroNet: Net = {
   download: downloadFile,
   europePMC: downloadEuropePMCSupplements,
   parseHTML: parse,
+  sleep: (ms) => Zotero.Promise.delay(ms),
 };

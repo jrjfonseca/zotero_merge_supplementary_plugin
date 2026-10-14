@@ -11,6 +11,7 @@ function fakeNet(
   site: Record<string, string | Uint8Array | number>,
   rendered: Record<string, string> = {},
   epmc?: Uint8Array,
+  captions?: Record<string, string>,
 ) {
   const log: string[] = [];
   const page = (url: string, html: string, viaBrowser: boolean): Page => ({
@@ -21,6 +22,7 @@ function fakeNet(
     viaBrowser,
   });
   let cleared = false;
+  const retried = new Set<string>();
   const net: Net = {
     async fetchPage(url) {
       log.push(`GET ${url}`);
@@ -37,6 +39,8 @@ function fakeNet(
     async download(url) {
       log.push(`DL ${url}`);
       let r = site[url];
+      if (typeof r === "number" && retried.has(url) && site[`${url}#retry`]) r = site[`${url}#retry`];
+      if (typeof r === "number") retried.add(url);
       if (r === 403 && cleared && site[`${url}#after-check`]) r = site[`${url}#after-check`];
       if (typeof r === "number") return { url, status: r };
       if (r === undefined) return { url, status: 404 };
@@ -44,9 +48,12 @@ function fakeNet(
     },
     async europePMC() {
       log.push("EPMC");
-      return epmc ? { url: "epmc", status: 200, bytes: epmc } : null;
+      return epmc ? { url: "epmc", status: 200, bytes: epmc, captions } : null;
     },
     parseHTML,
+    sleep: async () => {
+      log.push("SLEEP");
+    },
   };
   return { net, log };
 }
@@ -129,4 +136,28 @@ test("start URLs: item URL first, never a direct PDF link", () => {
     "https://doi.org/10.1/x",
   ]);
   assert.deepEqual(startURLs("10.1/x", "https://pub.example/x.pdf"), ["https://doi.org/10.1/x"]);
+});
+
+test("Europe PMC files captioned as paperwork are dropped", async () => {
+  const epmc = zipSync({
+    "x_MOESM1_ESM.pdf": await makePDF(2),
+    "x_MOESM2_ESM.pdf": await makePDF(1),
+  });
+  const { net } = fakeNet({ "https://doi.org/10.1/g": "<p>nothing</p>" }, {}, epmc, {
+    "x_MOESM1_ESM.pdf": "Supplementary Information Methods",
+    "x_MOESM2_ESM.pdf": "Reporting Summary",
+  });
+  const files = await new Discovery(net, () => {}, "10.1/g").run(startURLs("10.1/g"));
+  assert.deepEqual(files.map((f) => f.name), ["x_MOESM1_ESM.pdf"]);
+});
+
+test("temporary server errors are retried once", async () => {
+  const url = "https://cdn.example/suppl_file/h_si_001.pdf";
+  const page = `<a href="${url}">Supporting Information</a>`;
+  const { net, log } = fakeNet(
+    { "https://doi.org/10.1/h": page, [url]: 502, [`${url}#retry`]: await makePDF(1) },
+  );
+  const files = await new Discovery(net, () => {}, "10.1/h").run(startURLs("10.1/h"));
+  assert.equal(files.length, 1);
+  assert.equal(log.filter((l) => l === `DL ${url}`).length, 2);
 });

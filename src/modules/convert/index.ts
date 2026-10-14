@@ -14,16 +14,20 @@ export async function convertToPDF(
   bytes: Uint8Array,
   type: ConvertibleType,
   name: string,
-): Promise<{ bytes: Uint8Array; method: string }> {
+): Promise<{ bytes: Uint8Array; method: string; failures: string[] }> {
+  // Why better methods were skipped, for the debug log and tests.
+  const failures: string[] = [];
   const soffice = await findLibreOffice();
   if (soffice) {
     try {
       return {
         bytes: await convertWithLibreOffice(soffice, bytes, type),
         method: "LibreOffice",
+        failures,
       };
-    } catch (e) {
+    } catch (e: any) {
       ztoolkit.log("LibreOffice conversion failed, trying built-in", e);
+      failures.push(`LibreOffice: ${e?.message ?? e}`);
     }
   }
 
@@ -33,12 +37,13 @@ export async function convertToPDF(
 
   const html = await docxToHTML(bytes, name);
   try {
-    return { bytes: await printHTMLToPDF(html), method: "print" };
-  } catch (e) {
+    return { bytes: await printHTMLToPDF(html), method: "print", failures };
+  } catch (e: any) {
     ztoolkit.log("Printing to PDF failed, using simple renderer", e);
+    failures.push(`print: ${e?.message ?? e} ${e?.stack ?? ""}`);
   }
   const doc = new DOMParser().parseFromString(html, "text/html");
-  return { bytes: await renderHTMLToPDF(doc), method: "simple" };
+  return { bytes: await renderHTMLToPDF(doc), method: "simple", failures };
 }
 
 // ---------------------------------------------------------------------------
@@ -164,26 +169,36 @@ async function printHTMLToPDF(html: string): Promise<Uint8Array> {
     const settings = (Components.classes as any)["@mozilla.org/gfx/printsettings-service;1"]
       .getService(Ci.nsIPrintSettingsService)
       .createNewPrintSettings();
-    settings.isInitializedFromPrinter = true;
-    settings.isInitializedFromPrefs = true;
-    settings.printSilent = true;
-    settings.showPrintProgress = false;
-    settings.outputFormat = Ci.nsIPrintSettings.kOutputFormatPDF;
-    settings.printerName = "Mozilla Save to PDF";
-    settings.paperSizeUnit = Ci.nsIPrintSettings.kPaperSizeInches;
-    settings.paperWidth = 8.27; // A4
-    settings.paperHeight = 11.69;
-    settings.usePageRuleSizeAsPaperSize = true;
+    // Print settings change between Gecko versions; assigning one that no
+    // longer exists throws, so set each optional one defensively.
+    const set = (name: string, value: unknown) => {
+      try {
+        if (name in settings) settings[name] = value;
+      } catch (e) {
+        ztoolkit.log(`print setting ${name} not supported`, e);
+      }
+    };
+    set("isInitializedFromPrinter", true);
+    set("isInitializedFromPrefs", true);
+    set("printSilent", true);
+    set("showPrintProgress", false);
+    set("printerName", "Mozilla Save to PDF");
+    set("paperSizeUnit", Ci.nsIPrintSettings.kPaperSizeInches);
+    set("paperWidth", 8.27); // A4
+    set("paperHeight", 11.69);
+    set("usePageRuleSizeAsPaperSize", true);
     for (const side of ["Top", "Bottom", "Left", "Right"]) {
-      settings[`margin${side}`] = 0.4;
+      set(`margin${side}`, 0.4);
     }
     for (const pos of ["Left", "Center", "Right"]) {
-      settings[`headerStr${pos}`] = "";
-      settings[`footerStr${pos}`] = "";
+      set(`headerStr${pos}`, "");
+      set(`footerStr${pos}`, "");
     }
-    settings.printBGColors = true;
-    settings.printBGImages = true;
-    settings.shrinkToFit = true;
+    set("printBGColors", true);
+    set("printBGImages", true);
+    set("shrinkToFit", true);
+    // Required ones: let these throw if they ever stop working.
+    settings.outputFormat = Ci.nsIPrintSettings.kOutputFormatPDF;
 
     const storage = (Components.classes as any)["@mozilla.org/storagestream;1"].createInstance(Ci.nsIStorageStream);
     storage.init(65536, 0xffffffff);

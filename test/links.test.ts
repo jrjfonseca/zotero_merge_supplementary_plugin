@@ -23,6 +23,7 @@ test("Springer Nature: SI section, skipping reporting summary and videos", () =>
       <a href="https://static-content.springer.com/esm/art%3A10.1038%2Fx/MediaObjects/41586_2021_1_MOESM2_ESM.pdf">Reporting Summary</a></div>
     <div class="c-article-supplementary__item" id="MOESM3">
       <a href="https://static-content.springer.com/esm/art%3A10.1038%2Fx/MediaObjects/41586_2021_1_MOESM3_ESM.mp4">Supplementary Video 1</a></div>
+    <script type="application/json">{"files":["https://media.springernature.com/original/springer-static/esm/art%3A10.1038%2Fx/MediaObjects/41586_2021_1_MOESM2_ESM.pdf"]}</script>
     <ol class="c-article-references"><li><a href="https://example.org/other_si.pdf">Supplementary data of another paper</a></li></ol>
   </body></html>`;
   const found = links(html, "https://www.nature.com/articles/x", "10.1038/x");

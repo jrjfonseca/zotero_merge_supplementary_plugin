@@ -1,6 +1,6 @@
 # Zotero Merge Supplementary PDF
 
-A Zotero plugin that, in one click, **fetches an article's supplementary
+A Zotero plugin (tested on Zotero 10) that, in one click, **fetches an article's supplementary
 information from the publisher, converts Word files to PDF, and appends it to
 the main PDF** — for any journal. It also merges SI PDFs you attach yourself,
 automatically.
@@ -142,6 +142,23 @@ npm install
 npm run build
 npm test
 ```
+
+### Testing inside Zotero
+
+`test-zotero/` holds end-to-end tests that run in a real Zotero and hit
+real publisher sites: the one-click fetch on PLOS, Nature, Frontiers,
+Elsevier/Lancet and MDPI articles, Find Available PDF, Word→PDF conversion with
+LibreOffice and with Zotero's own print engine, the hidden browser, auto-merge
+and undo.
+
+```bash
+# Linux; any Zotero build works, e.g. the tarball from zotero.org
+export ZOTERO_PLUGIN_ZOTERO_BIN_PATH=/path/to/Zotero_linux-x86_64/zotero
+xvfb-run -a npm run test:zotero -- --exit-on-finish
+```
+
+Behind an HTTPS proxy, also set `ZOTERO_TEST_PROXY=host:port` and
+`ZOTERO_TEST_CA=/path/to/proxy-ca.crt` (needs `certutil`).
 
 To try the SI discovery on real articles outside Zotero (optionally with
 `playwright` installed for pages that need a browser):
