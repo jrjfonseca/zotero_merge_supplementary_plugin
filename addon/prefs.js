@@ -4,3 +4,4 @@ pref("useContentDetection", true);
 pref("keepBackup", true);
 pref("trashSupplementary", false);
 pref("addOutline", true);
+pref("libreOfficePath", "");

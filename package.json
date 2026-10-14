@@ -1,8 +1,8 @@
 {
   "name": "zotero-merge-supplementary-pdf",
   "type": "module",
-  "version": "0.3.0",
-  "description": "Merge supplementary/supporting info PDFs into the main PDF attachment in Zotero",
+  "version": "0.4.0",
+  "description": "Fetch supplementary information for Zotero items from any publisher, convert Word files to PDF, and merge it into the main PDF",
   "config": {
     "addonName": "Merge Supplementary PDF",
     "addonID": "merge-supplementary-pdf@joaofonseca.dev",
@@ -21,13 +21,17 @@
     "start": "zotero-plugin serve",
     "build": "zotero-plugin build && tsc --noEmit",
     "release": "zotero-plugin release",
-    "test": "node --test \"test/*.test.ts\""
+    "test": "node --import ./test/register.mjs --test \"test/*.test.ts\"",
+    "try-fetch": "node --import ./test/register.mjs scripts/try-fetch.ts"
   },
   "dependencies": {
+    "fflate": "^0.8.3",
+    "mammoth": "^1.13.0",
     "pdf-lib": "^1.17.1",
     "zotero-plugin-toolkit": "^5.1.4"
   },
   "devDependencies": {
+    "linkedom": "^0.18.13",
     "typescript": "^5.9.3",
     "zotero-plugin-scaffold": "^0.8.6",
     "zotero-types": "^4.1.2"

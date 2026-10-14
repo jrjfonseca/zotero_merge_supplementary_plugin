@@ -1,11 +1,50 @@
 # Zotero Merge Supplementary PDF
 
-A Zotero plugin that finds the supplementary/supporting information PDFs of a
-library item and appends them to the main article PDF — automatically when
-you attach them, or on demand for one item, a selection, or a whole
-collection.
+A Zotero plugin that, in one click, **fetches an article's supplementary
+information from the publisher, converts Word files to PDF, and appends it to
+the main PDF** — for any journal. It also merges SI PDFs you attach yourself,
+automatically.
 
-## Features
+## One click: Fetch & Merge Supplementary Info
+
+Right-click one or more items (or a collection) › **Fetch & Merge
+Supplementary Info**. For each item the plugin:
+
+1. Gets the main article PDF first if the item has none (Zotero's "Find
+   Available PDF").
+2. Opens the article page from the item's URL or DOI and finds the
+   supplementary files. This works on any site:
+   - generic signals: links in a "Supplementary / Supporting Information"
+     section, link text, file names;
+   - publisher patterns, e.g. ACS `suppl_file`, Wiley `downloadSupplement`,
+     Springer Nature / BMC `MOESM…_ESM`, Elsevier `mmc1` (also read from the
+     page's embedded data, or from the article's PII), RSC/IOP `suppdata`,
+     PLOS `type=supplementary`, PNAS `sapp`, Science `_sm`, bioRxiv `media-1`,
+     Frontiers, MDPI, PMC;
+   - "Supporting Information" listing pages are followed, ZIP archives are
+     unpacked;
+   - pages that need JavaScript or show a bot check (Cloudflare "Just a
+     moment…") are loaded in Zotero's built-in browser, which also uses your
+     institutional cookies;
+   - if the publisher shows nothing, **Europe PMC** is asked for the SI of
+     open-access articles.
+3. Keeps the documents (PDF, DOCX, DOC, ODT, RTF), skipping spreadsheets,
+   videos, structure files, "Reporting Summary"/"Peer Review File" paperwork,
+   and anything already attached.
+4. **Converts Word/ODT/RTF to PDF**:
+   - with **LibreOffice** if it is installed (best result; found
+     automatically, or set its path in the settings);
+   - otherwise DOCX is converted built-in: rendered to HTML and printed to PDF
+     by Zotero's own engine (tables and images included), with a plain-text
+     fallback. DOC/ODT/RTF need LibreOffice.
+5. Attaches the files to the item and **merges them into the main PDF**, with
+   a bookmark at the start of each one.
+
+If nothing can be found (e.g. the SI is only on a page that needs a login the
+plugin can't reach), download the files in your browser and drag them onto
+the item — they are merged automatically.
+
+## Merging SI you attach yourself
 
 - **Automatic detection** of which PDF is the article and which ones are
   supplementary, using:
@@ -51,9 +90,11 @@ Logging**).
 
 - **Automatic**: just attach the supplementary PDF to the item. A notification
   confirms the merge.
-- **One or more items**: select them, right-click › **Merge Supplementary
-  PDFs**. If the entry is greyed out, its label says why (e.g. "need 2+ PDFs,
-  found 1").
+- **Fetch from the web**: right-click › **Fetch & Merge Supplementary Info**
+  (items or a collection).
+- **Merge what is already attached**: select items, right-click › **Merge
+  Attached Supplementary PDFs**. If the entry is greyed out, its label says
+  why (e.g. "need 2+ PDFs, found 1").
 - **A collection**: right-click the collection › **Merge Supplementary PDFs in
   Collection…**.
 - **Undo**: right-click the item › **Restore Original PDF (Undo Merge)**.
@@ -69,6 +110,7 @@ Logging**).
 | Keep a `.backup.pdf` copy of the original (needed for undo) | on |
 | Add bookmarks for the start of each supplementary PDF | on |
 | Move merged supplementary attachments to the trash | off |
+| LibreOffice program (for converting Word files) | found automatically |
 
 ## Notes
 
@@ -77,6 +119,8 @@ Logging**).
   annotations made on a supplementary attachment stay on that attachment.
   Annotations embedded in the PDF files themselves are copied with the pages.
 - Encrypted PDFs can't be merged.
+- Only documents are merged into the PDF; spreadsheets, data files and videos
+  stay on the publisher's site.
 - Auto-merge ignores items that arrive through Zotero sync, so two computers
   never merge the same item.
 
@@ -97,6 +141,13 @@ cd zotero_merge_supplementary_plugin
 npm install
 npm run build
 npm test
+```
+
+To try the SI discovery on real articles outside Zotero (optionally with
+`playwright` installed for pages that need a browser):
+
+```bash
+npm run try-fetch -- 10.1371/journal.pone.0229668 10.3389/fmicb.2020.01800
 ```
 
 The built `.xpi` will be at `.scaffold/build/merge-supplementary-pdf.xpi`.

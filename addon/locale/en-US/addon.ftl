@@ -4,8 +4,12 @@ startup-finish = Merge Supplementary PDF is ready
 # XUL <menuitem> renders its `label` ATTRIBUTE, not the message value/text
 # content. A value-only message leaves the native MenuManager item blank, so
 # these must be attribute-style Fluent messages.
+menuitem-fetch-label =
+    .label = Fetch & Merge Supplementary Info{ $reason }
+menuitem-fetch-collection-label =
+    .label = Fetch & Merge Supplementary Info for Collection…
 menuitem-merge-label =
-    .label = Merge Supplementary PDFs{ $reason }
+    .label = Merge Attached Supplementary PDFs{ $reason }
 menuitem-restore-label =
     .label = Restore Original PDF (Undo Merge)
 menuitem-merge-collection-label =
@@ -78,3 +82,36 @@ pref-add-outline =
     .label = Add bookmarks for the start of each supplementary PDF
 pref-trash-supplementary =
     .label = Move merged supplementary attachments to the trash
+
+fetch-progress-start = Looking for supplementary information…
+fetch-progress-main = Finding the article PDF…
+fetch-progress-page = Reading the article page ({ $host })…
+fetch-progress-download = Downloading supplementary files ({ $current }/{ $total })…
+fetch-progress-pmc = Checking Europe PMC for supplementary files (this can take a minute)…
+fetch-progress-convert = Converting { $name } to PDF…
+fetch-progress-attach =
+    { $count ->
+        [one] Attaching 1 supplementary file…
+       *[other] Attaching { $count } supplementary files…
+    }
+fetch-success = Supplementary information fetched and merged
+fetch-summary = Merged { $merged } · Nothing to merge { $nothing } · Failed { $failed }
+fetch-none-found = No supplementary files found. If you can see them in your browser, drag them onto the item and they will be merged automatically.
+fetch-none-new = The supplementary files are already attached
+fetch-no-main = Supplementary files were attached, but there is no main PDF to merge them into
+fetch-error-no-identifier = The item has no DOI or URL to look up
+fetch-note-convert-failed = Could not convert { $name }: { $reason }
+fetch-note-encrypted = { $name } is encrypted and was skipped
+fetch-note-invalid = { $name } is not a valid PDF and was skipped
+collection-nothing-to-fetch = No item in this collection has a DOI or URL.
+collection-fetch-confirm =
+    { $count ->
+        [one] Fetch and merge supplementary information for 1 item in “{ $name }”?
+       *[other] Fetch and merge supplementary information for { $count } items in “{ $name }”?
+    }
+
+    This downloads files from each article's web page and may take a while.
+
+pref-convert-title = Converting Word files
+pref-libreoffice-path = LibreOffice program (optional; found automatically if installed):
+pref-convert-help = DOC, ODT and RTF files need LibreOffice. DOCX files are converted with or without it, but LibreOffice gives the most faithful result (equations, layout).

@@ -24,6 +24,8 @@ export type MergeOutcome =
 export interface MergeOptions {
   /** Ask the user (picker dialog) when detection isn't confident */
   interactive: boolean;
+  /** Attachment IDs known to be supplementary (e.g. just downloaded as SI) */
+  knownSupplementary?: Set<number>;
 }
 
 type Candidate = ScoredCandidate<Zotero.Item> & { path: string };
@@ -80,7 +82,7 @@ function safeField(item: Zotero.Item, field: string): string {
   }
 }
 
-function parentDOI(parent: Zotero.Item): string | undefined {
+export function parentDOI(parent: Zotero.Item): string | undefined {
   const doi = safeField(parent, "DOI");
   if (doi) return doi.trim();
   // Item types without a DOI field often keep it in Extra.
@@ -99,7 +101,10 @@ async function firstPagesText(att: Zotero.Item): Promise<string | undefined> {
   }
 }
 
-async function scoreAttachments(parent: Zotero.Item): Promise<Candidate[]> {
+async function scoreAttachments(
+  parent: Zotero.Item,
+  known: Set<number> = new Set(),
+): Promise<Candidate[]> {
   const useText = getPref("useContentDetection");
   const parentTitle = safeField(parent, "title");
   const doi = parentDOI(parent);
@@ -115,6 +120,10 @@ async function scoreAttachments(parent: Zotero.Item): Promise<Candidate[]> {
       parentTitle,
       parentDOI: doi,
     });
+    if (known.has(att.id)) {
+      scored.score += 10;
+      scored.reasons.push("downloaded from the article's supplementary files");
+    }
     candidates.push({ ...scored, path });
   }
   return candidates;
@@ -162,7 +171,7 @@ async function mergeItemUnlocked(
     return { status: "skipped", reason: getString("reason-read-only") };
   }
 
-  const candidates = await scoreAttachments(parent);
+  const candidates = await scoreAttachments(parent, options.knownSupplementary);
   if (candidates.length < 2) {
     return {
       status: "skipped",

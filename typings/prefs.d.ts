@@ -12,6 +12,7 @@ declare namespace _ZoteroTypes {
       "keepBackup": boolean;
       "trashSupplementary": boolean;
       "addOutline": boolean;
+      "libreOfficePath": string;
     };
   }
 }

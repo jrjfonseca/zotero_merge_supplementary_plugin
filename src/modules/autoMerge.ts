@@ -13,6 +13,21 @@ let observerID: string | undefined;
 // parent item ID -> token of the most recent scheduled run
 const pending = new Map<number, number>();
 let nextToken = 0;
+// Parent items whose new attachments are being added by this plugin itself.
+const suppressed = new Set<number>();
+
+/** Run `fn` without auto-merge reacting to the attachments it adds. */
+export async function suppressAutoMerge<T>(
+  parentID: number,
+  fn: () => Promise<T>,
+): Promise<T> {
+  suppressed.add(parentID);
+  try {
+    return await fn();
+  } finally {
+    suppressed.delete(parentID);
+  }
+}
 
 export function registerAutoMerge() {
   observerID = Zotero.Notifier.registerObserver(
@@ -25,7 +40,12 @@ export function registerAutoMerge() {
         if ((Zotero as any).Sync?.Runner?.syncInProgress) return;
         for (const id of ids as number[]) {
           const item = Zotero.Items.get(id);
-          if (item && item.isPDFAttachment() && item.parentItemID) {
+          if (
+            item &&
+            item.isPDFAttachment() &&
+            item.parentItemID &&
+            !suppressed.has(item.parentItemID)
+          ) {
             void schedule(item.parentItemID);
           }
         }

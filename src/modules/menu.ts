@@ -1,5 +1,6 @@
 import { config } from "../../package.json";
 import { getString } from "../utils/locale";
+import { canFetch, fetchAndMergeItems } from "./fetch";
 import {
   getUnmergedPDFs,
   hasMergedAttachments,
@@ -22,6 +23,26 @@ export function registerMenu() {
     pluginID: config.addonID,
     target: "main/library/item",
     menus: [
+      {
+        menuType: "menuitem",
+        l10nID: `${config.addonRef}-menuitem-fetch-label`,
+        l10nArgs: { reason: "" },
+        icon: ICON,
+        onShowing: (_event, context) => {
+          const parents = resolveParents(context.items ?? []);
+          const fetchable = parents.filter(canFetch).length;
+          let reason = "";
+          if (parents.length === 0) reason = " (select an item)";
+          else if (fetchable === 0) reason = " (item has no DOI or URL)";
+          else if (parents.length > 1) reason = ` (${fetchable} items)`;
+          context.setEnabled(fetchable > 0);
+          context.setL10nArgs(JSON.stringify({ reason }) as any);
+        },
+        onCommand: (_event, context) => {
+          const parents = resolveParents(context.items ?? []).filter(canFetch);
+          if (parents.length > 0) void fetchAndMergeItems(parents);
+        },
+      },
       {
         menuType: "menuitem",
         l10nID: `${config.addonRef}-menuitem-merge-label`,
@@ -67,6 +88,19 @@ export function registerMenu() {
     pluginID: config.addonID,
     target: "main/library/collection",
     menus: [
+      {
+        menuType: "menuitem",
+        l10nID: `${config.addonRef}-menuitem-fetch-collection-label`,
+        icon: ICON,
+        onShowing: (_event, context) => {
+          const row = context.collectionTreeRow as any;
+          context.setVisible(Boolean(row?.isCollection?.()));
+        },
+        onCommand: (_event, context) => {
+          const row = context.collectionTreeRow as any;
+          if (row?.isCollection?.()) void fetchCollection(row.ref);
+        },
+      },
       {
         menuType: "menuitem",
         l10nID: `${config.addonRef}-menuitem-merge-collection-label`,
@@ -136,4 +170,27 @@ async function mergeCollection(collection: Zotero.Collection) {
     }),
   );
   if (ok) await mergeItems(parents);
+}
+
+async function fetchCollection(collection: Zotero.Collection) {
+  const parents = resolveParents(collection.getChildItems(false)).filter(
+    canFetch,
+  );
+  const win = Zotero.getMainWindow();
+  if (parents.length === 0) {
+    Services.prompt.alert(
+      win as any,
+      addon.data.config.addonName,
+      getString("collection-nothing-to-fetch"),
+    );
+    return;
+  }
+  const ok = Services.prompt.confirm(
+    win as any,
+    addon.data.config.addonName,
+    getString("collection-fetch-confirm", {
+      args: { count: parents.length, name: collection.name },
+    }),
+  );
+  if (ok) await fetchAndMergeItems(parents);
 }
