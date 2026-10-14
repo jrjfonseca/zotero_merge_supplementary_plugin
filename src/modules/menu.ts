@@ -1,16 +1,24 @@
 import { config } from "../../package.json";
 import { getString } from "../utils/locale";
-import { performMerge } from "./merge";
+import {
+  getUnmergedPDFs,
+  hasMergedAttachments,
+  isMergeable,
+  mergeItems,
+  resolveParents,
+  restoreItems,
+} from "./merge";
 
-const MENU_ID = "mergesupppdf-itemmenu-merge";
+const ITEM_MENU_ID = "mergesupppdf-itemmenu";
+const COLLECTION_MENU_ID = "mergesupppdf-collectionmenu";
+const ICON = `chrome://${config.addonRef}/content/icons/favicon@0.5x.png`;
 
 // Zotero 9 replaced ad-hoc DOM menu injection with a native, sandboxed
 // plugin API: Zotero.MenuManager.registerMenu(). It is registered once,
-// globally (not per-window), and Zotero renders it in every window's
-// library item context menu.
+// globally (not per-window), and Zotero renders it in every window.
 export function registerMenu() {
   Zotero.MenuManager.registerMenu({
-    menuID: MENU_ID,
+    menuID: ITEM_MENU_ID,
     pluginID: config.addonID,
     target: "main/library/item",
     menus: [
@@ -19,12 +27,10 @@ export function registerMenu() {
         l10nID: `${config.addonRef}-menuitem-merge-label`,
         // Default arg so the label renders cleanly before onShowing runs.
         l10nArgs: { reason: "" },
-        icon: `chrome://${config.addonRef}/content/icons/favicon@0.5x.png`,
+        icon: ICON,
         onShowing: (_event, context) => {
-          const state = getMenuState(context.items ?? []);
+          const state = getMergeMenuState(context.items ?? []);
           context.setEnabled(state.enabled);
-          // Append the reason to the label when disabled (e.g. greyed-out
-          // "... (need 2 PDFs, found 1)") so the user knows why.
           // setL10nArgs assigns its value straight to dataset.l10nArgs with no
           // serialization, so it MUST be a JSON string — passing an object
           // yields "[object Object]", which Fluent can't parse, leaving the
@@ -32,7 +38,46 @@ export function registerMenu() {
           context.setL10nArgs(JSON.stringify({ reason: state.reason }) as any);
         },
         onCommand: (_event, context) => {
-          void onMenuCommand(context.items ?? []);
+          const parents = resolveParents(context.items ?? []).filter(
+            isMergeable,
+          );
+          if (parents.length > 0) void mergeItems(parents);
+        },
+      },
+      {
+        menuType: "menuitem",
+        l10nID: `${config.addonRef}-menuitem-restore-label`,
+        icon: ICON,
+        onShowing: (_event, context) => {
+          const parents = resolveParents(context.items ?? []);
+          context.setVisible(parents.some(hasMergedAttachments));
+        },
+        onCommand: (_event, context) => {
+          const parents = resolveParents(context.items ?? []).filter(
+            hasMergedAttachments,
+          );
+          if (parents.length > 0) void restoreItems(parents);
+        },
+      },
+    ],
+  });
+
+  Zotero.MenuManager.registerMenu({
+    menuID: COLLECTION_MENU_ID,
+    pluginID: config.addonID,
+    target: "main/library/collection",
+    menus: [
+      {
+        menuType: "menuitem",
+        l10nID: `${config.addonRef}-menuitem-merge-collection-label`,
+        icon: ICON,
+        onShowing: (_event, context) => {
+          const row = context.collectionTreeRow as any;
+          context.setVisible(Boolean(row?.isCollection?.()));
+        },
+        onCommand: (_event, context) => {
+          const row = context.collectionTreeRow as any;
+          if (row?.isCollection?.()) void mergeCollection(row.ref);
         },
       },
     ],
@@ -40,7 +85,8 @@ export function registerMenu() {
 }
 
 export function unregisterMenu() {
-  Zotero.MenuManager.unregisterMenu(MENU_ID);
+  Zotero.MenuManager.unregisterMenu(ITEM_MENU_ID);
+  Zotero.MenuManager.unregisterMenu(COLLECTION_MENU_ID);
 }
 
 interface MenuState {
@@ -48,49 +94,46 @@ interface MenuState {
   reason: string;
 }
 
-function getMenuState(items: Zotero.Item[]): MenuState {
+function getMergeMenuState(items: Zotero.Item[]): MenuState {
   try {
-    if (items.length !== 1) {
-      return { enabled: false, reason: " (select 1 item)" };
+    const parents = resolveParents(items);
+    if (parents.length === 0) {
+      return { enabled: false, reason: " (select an item)" };
     }
-
-    const item = items[0];
-    if (!item.isRegularItem()) {
-      return { enabled: false, reason: " (select a regular item)" };
+    if (parents.length === 1) {
+      const count = getUnmergedPDFs(parents[0]).length;
+      return count >= 2
+        ? { enabled: true, reason: "" }
+        : { enabled: false, reason: ` (need 2+ PDFs, found ${count})` };
     }
-
-    const attachmentIDs = item.getAttachments();
-    let pdfCount = 0;
-    for (const id of attachmentIDs) {
-      const att = Zotero.Items.get(id);
-      if (att.attachmentContentType === "application/pdf") {
-        pdfCount++;
-      }
-    }
-
-    if (pdfCount !== 2) {
-      return { enabled: false, reason: ` (need 2 PDFs, found ${pdfCount})` };
-    }
-
-    return { enabled: true, reason: "" };
+    const mergeable = parents.filter(isMergeable).length;
+    return mergeable > 0
+      ? { enabled: true, reason: ` (${mergeable} items)` }
+      : { enabled: false, reason: " (no item has 2+ PDFs)" };
   } catch {
     return { enabled: false, reason: "" };
   }
 }
 
-async function onMenuCommand(items: Zotero.Item[]) {
-  try {
-    if (items.length !== 1) return;
-    await performMerge(items[0]);
-  } catch (e: any) {
-    ztoolkit.log("Merge error:", e);
-    new ztoolkit.ProgressWindow(addon.data.config.addonName)
-      .createLine({
-        text: getString("merge-error-generic", {
-          args: { message: e.message || String(e) },
-        }),
-        type: "error",
-      })
-      .show();
+async function mergeCollection(collection: Zotero.Collection) {
+  const parents = resolveParents(collection.getChildItems(false)).filter(
+    isMergeable,
+  );
+  const win = Zotero.getMainWindow();
+  if (parents.length === 0) {
+    Services.prompt.alert(
+      win as any,
+      addon.data.config.addonName,
+      getString("collection-nothing-to-merge"),
+    );
+    return;
   }
+  const ok = Services.prompt.confirm(
+    win as any,
+    addon.data.config.addonName,
+    getString("collection-confirm", {
+      args: { count: parents.length, name: collection.name },
+    }),
+  );
+  if (ok) await mergeItems(parents);
 }
