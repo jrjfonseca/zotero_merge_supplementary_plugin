@@ -23,6 +23,9 @@ export interface LinkCandidate {
 /** File types we can merge (PDF) or convert to PDF. */
 export const DOCUMENT_EXTS = new Set([
   "pdf",
+  "pptx",
+  "ppt",
+  "odp",
   "docx",
   "doc",
   "rtf",
@@ -62,8 +65,6 @@ const OTHER_EXTS = new Set([
   "tiff",
   "svg",
   "eps",
-  "ppt",
-  "pptx",
   "gz",
   "tar",
   "7z",

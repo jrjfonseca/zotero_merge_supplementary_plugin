@@ -18,6 +18,7 @@ export type FluentMessageId =
   | 'fetch-progress-attach'
   | 'fetch-progress-convert'
   | 'fetch-progress-download'
+  | 'fetch-progress-figshare'
   | 'fetch-progress-main'
   | 'fetch-progress-page'
   | 'fetch-progress-pmc'

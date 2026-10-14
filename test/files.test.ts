@@ -8,6 +8,7 @@ test("sniffs file types from content", async () => {
   assert.equal(sniff(await makePDF(1)), "pdf");
   assert.equal(sniff(makeDOCX(["x"])), "docx");
   assert.equal(sniff(zipSync({ "a.txt": strToU8("hi") })), "zip");
+  assert.equal(sniff(zipSync({ "[Content_Types].xml": strToU8("x"), "ppt/presentation.xml": strToU8("x") })), "pptx");
   assert.equal(sniff(strToU8("<!DOCTYPE html><html></html>")), "html");
   assert.equal(sniff(strToU8("{\\rtf1\\ansi hello}")), "rtf");
   assert.equal(sniff(new Uint8Array([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1, 0])), "doc");

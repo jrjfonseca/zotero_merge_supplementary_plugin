@@ -38,6 +38,15 @@ export interface Download {
   name?: string;
   /** For archives: file name -> caption, when the source describes them */
   captions?: Record<string, string>;
+  /** Europe PMC: the article's PubMed Central id, when it has one */
+  pmcid?: string;
+}
+
+export interface RepositoryFile {
+  url: string;
+  name: string;
+  /** Title of the repository record, e.g. "Supplementary Information" */
+  title?: string;
 }
 
 export interface Net {
@@ -51,6 +60,8 @@ export interface Net {
    * with each file's caption when available
    */
   europePMC(doi: string): Promise<Download | null>;
+  /** Files deposited on Figshare for the article with this DOI */
+  figshare?(doi: string): Promise<RepositoryFile[]>;
   /** Wait (for retrying temporary server errors) */
   sleep?(ms: number): Promise<void>;
   parseHTML(html: string): Document;
@@ -64,6 +75,7 @@ export interface FoundFile extends NamedFile {
 }
 
 const MAX_PAGES = 6;
+const DOC_FILE = /\.(pdf|docx?|odt|rtf|pptx?|odp|zip)$/i;
 // Statuses worth one more try: bot checks, rate limits, temporary errors.
 const REFUSED = new Set([401, 403, 429, 502, 503, 504]);
 const MAX_FILES = 20;
@@ -237,14 +249,44 @@ export class Discovery {
     return found;
   }
 
-  /** Everything in one go: pages -> links -> files (-> Europe PMC). */
+  /**
+   * Everything in one go. Sources, until one yields documents:
+   * 1. the publisher's article page (and SI pages/files it links to);
+   * 2. Figshare, where many publishers mirror SI (ACS, T&F, PLOS, SAGE…);
+   * 3. Europe PMC's SI archive for open-access articles;
+   * 4. the PubMed Central article page (e.g. author manuscripts).
+   */
   async run(startURLs: string[]): Promise<FoundFile[]> {
     const { files, referrer } = await this.findCandidates(startURLs);
     let found = files.length ? await this.downloadCandidates(files, referrer) : [];
 
+    if (found.length === 0 && this.doi && this.net.figshare) {
+      this.report("fetch-progress-figshare");
+      const deposited = (await this.net.figshare(this.doi)).filter(
+        (f) => !NOT_SI_TEXT.test(`${f.title ?? ""} ${f.name}`),
+      );
+      found = await this.downloadCandidates(
+        deposited.slice(0, MAX_FILES).map((f) => ({
+          url: f.url,
+          label: f.name,
+          score: 5,
+          isPage: false,
+        })),
+        undefined,
+        1,
+      );
+      // Figshare download links have no file name; keep the deposited one.
+      for (const f of found) {
+        const dep = deposited.find((d) => d.url === f.source);
+        if (dep && !/\.[a-z0-9]{2,5}$/i.test(f.name)) f.name = dep.name;
+      }
+    }
+
+    let pmcid: string | undefined;
     if (found.length === 0 && this.doi) {
       this.report("fetch-progress-pmc");
       const zip = await this.net.europePMC(this.doi);
+      pmcid = zip?.pmcid;
       if (zip?.bytes && sniff(zip.bytes) === "zip") {
         const captions = zip.captions ?? {};
         found = extractDocumentsFromZip(zip.bytes)
@@ -253,6 +295,25 @@ export class Discovery {
           // Drop "Reporting Summary", "Peer Review File" and the like.
           .filter((f) => !NOT_SI_TEXT.test(captions[f.name] ?? ""));
       }
+      // Author manuscripts: the archive can lack SI files that the article
+      // XML lists; PMC serves those next to the article.
+      if (found.length === 0 && pmcid && zip?.captions) {
+        const listed = Object.entries(zip.captions)
+          .filter(([name, caption]) => DOC_FILE.test(name) && !NOT_SI_TEXT.test(caption))
+          .map(([name]) => ({
+            url: `https://pmc.ncbi.nlm.nih.gov/articles/${pmcid}/bin/${encodeURIComponent(name)}`,
+            label: name,
+            score: 5,
+            isPage: false,
+          }));
+        if (listed.length) found = await this.downloadCandidates(listed, undefined, 1);
+      }
+    }
+
+    if (found.length === 0 && pmcid) {
+      const pmc = `https://pmc.ncbi.nlm.nih.gov/articles/${pmcid}/`;
+      const { files: pmcFiles, referrer: pmcRef } = await this.findCandidates([pmc]);
+      if (pmcFiles.length) found = await this.downloadCandidates(pmcFiles, pmcRef);
     }
 
     // Same file linked twice (e.g. "view" and "download" links).

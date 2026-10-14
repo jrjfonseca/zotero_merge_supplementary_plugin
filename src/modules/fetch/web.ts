@@ -2,7 +2,7 @@
 // (runs scripts, passes bot checks, uses the user's cookies) as fallback.
 
 import { getHiddenBrowserClass, localBytes } from "../../utils/gecko";
-import type { Download, Net, Page } from "./discover";
+import type { Download, Net, Page, RepositoryFile } from "./discover";
 import { parseJATSCaptions } from "./files";
 import { looksLikeChallenge } from "./links";
 
@@ -140,20 +140,24 @@ export async function downloadEuropePMCSupplements(
     "text",
   );
   if (!search || search.status !== 200) return null;
-  let pmcid: string | undefined;
+  let hit: any;
   try {
     const json = JSON.parse(search.responseText ?? "");
-    const hit = json?.resultList?.result?.find((r: any) => r.pmcid);
-    if (hit?.hasSuppl === "N") return null;
-    pmcid = hit?.pmcid;
+    hit = json?.resultList?.result?.find((r: any) => r.pmcid);
   } catch {
     return null;
   }
+  const pmcid: string | undefined = hit?.pmcid;
   if (!pmcid) return null;
-  const zip = await downloadFile(
-    `https://www.ebi.ac.uk/europepmc/webservices/rest/${pmcid}/supplementaryFiles`,
-  );
-  if (zip?.bytes) zip.captions = await europePMCCaptions(pmcid);
+  const url = `https://www.ebi.ac.uk/europepmc/webservices/rest/${pmcid}/supplementaryFiles`;
+  // Europe PMC only serves the files of open-access articles.
+  if (hit.hasSuppl === "N" || hit.isOpenAccess !== "Y") {
+    return { url, status: 404, pmcid };
+  }
+  const zip = await downloadFile(url);
+  if (!zip) return { url, status: 0, pmcid };
+  zip.pmcid = pmcid;
+  if (zip.bytes) zip.captions = await europePMCCaptions(pmcid);
   return zip;
 }
 
@@ -166,11 +170,50 @@ async function europePMCCaptions(pmcid: string): Promise<Record<string, string>>
   return xhr?.status === 200 ? parseJATSCaptions(String(xhr.responseText ?? "")) : {};
 }
 
+/** Files deposited on Figshare for the article with this DOI. */
+export async function figshareFiles(doi: string): Promise<RepositoryFile[]> {
+  try {
+    const search = await (Zotero.HTTP as any).request(
+      "POST",
+      "https://api.figshare.com/v2/articles/search",
+      {
+        body: JSON.stringify({ search_for: `:resource_doi: ${doi}`, page_size: 20 }),
+        headers: { "Content-Type": "application/json" },
+        responseType: "json",
+        successCodes: false,
+        timeout: 30000,
+      },
+    );
+    if (search.status !== 200 || !Array.isArray(search.response)) return [];
+    const out: RepositoryFile[] = [];
+    for (const record of search.response) {
+      if (String(record.resource_doi ?? "").toLowerCase() !== doi.toLowerCase()) continue;
+      const detail = await (Zotero.HTTP as any).request(
+        "GET",
+        `https://api.figshare.com/v2/articles/${record.id}`,
+        { responseType: "json", successCodes: false, timeout: 30000 },
+      );
+      for (const f of detail.response?.files ?? []) {
+        if (DOC_NAME.test(f.name ?? "")) {
+          out.push({ url: f.download_url, name: f.name, title: record.title });
+        }
+      }
+    }
+    return out;
+  } catch (e) {
+    ztoolkit.log("Figshare lookup failed", e);
+    return [];
+  }
+}
+
+const DOC_NAME = /\.(pdf|docx?|odt|rtf|pptx?|odp|zip)$/i;
+
 export const zoteroNet: Net = {
   fetchPage: fetchPageHTTP,
   renderPage: fetchPageBrowser,
   download: downloadFile,
   europePMC: downloadEuropePMCSupplements,
+  figshare: figshareFiles,
   parseHTML: parse,
   sleep: (ms) => Zotero.Promise.delay(ms),
 };

@@ -9,14 +9,22 @@ export type FileType =
   | "doc"
   | "odt"
   | "rtf"
+  | "pptx"
+  | "odp"
   | "zip"
   | "html"
   | "unknown";
 
-export type ConvertibleType = Extract<FileType, "docx" | "doc" | "odt" | "rtf">;
+/** Office formats converted to PDF (slides too: SI figures often come as decks). */
+export type ConvertibleType = Extract<
+  FileType,
+  "docx" | "doc" | "odt" | "rtf" | "pptx" | "odp"
+>;
+
+const CONVERTIBLE = new Set<FileType>(["docx", "doc", "odt", "rtf", "pptx", "odp"]);
 
 export function isConvertible(type: FileType): type is ConvertibleType {
-  return type === "docx" || type === "doc" || type === "odt" || type === "rtf";
+  return CONVERTIBLE.has(type);
 }
 
 export interface NamedFile {
@@ -45,11 +53,16 @@ export function sniff(bytes: Uint8Array): FileType {
   if (includesAscii(bytes, "%PDF-", 1024)) return "pdf";
   if (startsWith(bytes, [0x50, 0x4b, 0x03, 0x04])) {
     if (includesAscii(bytes, "word/document.xml")) return "docx";
+    if (includesAscii(bytes, "ppt/presentation.xml")) return "pptx";
     if (includesAscii(bytes, "application/vnd.oasis.opendocument.text", 200)) {
       return "odt";
     }
+    if (includesAscii(bytes, "application/vnd.oasis.opendocument.presentation", 200)) {
+      return "odp";
+    }
     return "zip";
   }
+  // Legacy Office (OLE): Word or PowerPoint; LibreOffice tells them apart.
   if (startsWith(bytes, [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])) {
     return "doc";
   }
@@ -65,7 +78,7 @@ export function sniff(bytes: Uint8Array): FileType {
   return "unknown";
 }
 
-const WANTED_IN_ZIP = /\.(pdf|docx?|odt|rtf)$/i;
+const WANTED_IN_ZIP = /\.(pdf|docx?|odt|rtf|pptx?|odp)$/i;
 
 /**
  * Extract the document files (PDF/DOCX/DOC/ODT/RTF) from a ZIP archive.

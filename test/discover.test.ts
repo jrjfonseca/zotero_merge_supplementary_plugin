@@ -12,6 +12,7 @@ function fakeNet(
   rendered: Record<string, string> = {},
   epmc?: Uint8Array,
   captions?: Record<string, string>,
+  extra: { figshare?: { url: string; name: string; title?: string }[]; pmcid?: string } = {},
 ) {
   const log: string[] = [];
   const page = (url: string, html: string, viaBrowser: boolean): Page => ({
@@ -48,7 +49,12 @@ function fakeNet(
     },
     async europePMC() {
       log.push("EPMC");
-      return epmc ? { url: "epmc", status: 200, bytes: epmc, captions } : null;
+      if (epmc) return { url: "epmc", status: 200, bytes: epmc, captions, pmcid: extra.pmcid };
+      return extra.pmcid ? { url: "epmc", status: 404, pmcid: extra.pmcid } : null;
+    },
+    async figshare() {
+      log.push("FIGSHARE");
+      return extra.figshare ?? [];
     },
     parseHTML,
     sleep: async () => {
@@ -160,4 +166,55 @@ test("temporary server errors are retried once", async () => {
   const files = await new Discovery(net, () => {}, "10.1/h").run(startURLs("10.1/h"));
   assert.equal(files.length, 1);
   assert.equal(log.filter((l) => l === `DL ${url}`).length, 2);
+});
+
+test("falls back to Figshare deposits (e.g. ACS) when the publisher page is blocked", async () => {
+  const pdf = await makePDF(2);
+  const { net, log } = fakeNet(
+    { "https://doi.org/10.1021/x": CHALLENGE, "https://ndownloader.figshare.com/files/1": pdf, "https://ndownloader.figshare.com/files/2": await makePDF(1) },
+    {},
+    undefined,
+    undefined,
+    {
+      figshare: [
+        { url: "https://ndownloader.figshare.com/files/1", name: "ja0c1_si_001.pdf", title: "Supporting Information" },
+        { url: "https://ndownloader.figshare.com/files/2", name: "peer_review.pdf", title: "Peer Review File" },
+      ],
+    },
+  );
+  const files = await new Discovery(net, () => {}, "10.1021/x").run(startURLs("10.1021/x"));
+  assert.deepEqual(files.map((f) => f.name), ["ja0c1_si_001.pdf"]);
+  assert.ok(!log.includes("EPMC"), "stops once Figshare had the files");
+});
+
+test("falls back to the PubMed Central article page for non-open-access articles", async () => {
+  const pmc = "https://pmc.ncbi.nlm.nih.gov/articles/PMC123/";
+  const file = "https://pmc.ncbi.nlm.nih.gov/articles/instance/123/bin/abc_sm.pdf";
+  const { net } = fakeNet(
+    {
+      "https://doi.org/10.1126/x": CHALLENGE,
+      [pmc]: `<section id="supplementary-material"><h2>Supplementary Material</h2><a href="${file}">abc_sm.pdf</a></section>`,
+      [file]: await makePDF(3),
+    },
+    {},
+    undefined,
+    undefined,
+    { pmcid: "PMC123" },
+  );
+  const files = await new Discovery(net, () => {}, "10.1126/x").run(startURLs("10.1126/x"));
+  assert.deepEqual(files.map((f) => f.name), ["abc_sm.pdf"]);
+});
+
+test("files listed in the article XML but missing from the Europe PMC archive come from PMC", async () => {
+  const gifOnly = zipSync({ "f1.gif": strToU8("GIF89a") });
+  const file = "https://pmc.ncbi.nlm.nih.gov/articles/PMC9/bin/NIHMS1-supplement-supplementary.pdf";
+  const { net } = fakeNet(
+    { "https://doi.org/10.1088/x": "<p>no links</p>", [file]: await makePDF(2) },
+    {},
+    gifOnly,
+    { "NIHMS1-supplement-supplementary.pdf": "supplementary", "f1.gif": "Figure 1" },
+    { pmcid: "PMC9" },
+  );
+  const files = await new Discovery(net, () => {}, "10.1088/x").run(startURLs("10.1088/x"));
+  assert.deepEqual(files.map((f) => f.name), ["NIHMS1-supplement-supplementary.pdf"]);
 });

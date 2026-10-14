@@ -5,6 +5,7 @@ import { assert } from "chai";
 import { PDFDocument } from "pdf-lib";
 import { config } from "../package.json";
 import { makeDOCX } from "../test/docx-fixture.ts";
+import { SLIDES_PPTX_BASE64 } from "./fixtures/slides";
 
 const PREF = (key: string) => `${config.prefsPrefix}.${key}`;
 const MERGED_TAG = "_merged-supplementary";
@@ -104,6 +105,16 @@ describe("Word to PDF conversion inside Zotero", function () {
     assert.isAtLeast((await PDFDocument.load(localBytes(bytes))).getPageCount(), 1);
   });
 
+  it("converts PowerPoint SI with LibreOffice", async function () {
+    const pptx = Uint8Array.from(atob(SLIDES_PPTX_BASE64), (c) => c.charCodeAt(0));
+    const { bytes, method } = await api().convertToPDF(pptx, "pptx", "SI.pptx");
+    assert.equal(method, "LibreOffice");
+    const { item } = await makeItem("10.0000/pptx-check", false);
+    const att = await importPDF(item, bytes, "slides.pdf", "slides.pdf");
+    const text = (await (Zotero as any).PDFWorker.getFullText(att.id, 5, true)).text;
+    assert.include(text, "Supplementary Figure S1");
+  });
+
   it("converts RTF with LibreOffice", async function () {
     const rtf = new TextEncoder().encode("{\\rtf1\\ansi Supplementary RTF text\\par}");
     const { bytes, method } = await api().convertToPDF(rtf, "rtf", "SI.rtf");
@@ -194,6 +205,12 @@ describe("More publishers (open-access articles with SI)", function () {
     ["10.1103/physrevx.12.041038", "APS"],
     ["10.1177/11786302221146892", "SAGE (DOCX SI)"],
     ["10.1007/s40820-022-00959-6", "Springer"],
+    ["10.7717/peerj.1404", "PeerJ (.doc SI)"],
+    ["10.1021/acsomega.1c04852", "ACS Omega (Figshare)"],
+    ["10.1091/mbc.e16-12-0871", "ASCB (Figshare)"],
+    ["10.1016/j.celrep.2015.11.007", "Cell Reports (Elsevier)"],
+    ["10.15252/emmm.201910581", "EMBO"],
+    ["10.1155/2015/592372", "Hindawi"],
   ]) {
     it(`${publisher}: ${doi}`, async function () {
       const { outcome, supps, suppPages, mainPages } = await fetchAndCheck(doi);
@@ -259,19 +276,43 @@ describe("Auto-merge and undo", function () {
   });
 });
 
-describe("Bot-protected publishers (recorded, not asserted)", function () {
-  // From a normal connection Zotero's browser passes these sites' bot checks;
-  // some sandboxes block the check itself, so only record what happens.
-  for (const doi of [
-    "10.1021/jacs.0c06363", // ACS
-    "10.1002/anie.201916483", // Wiley
-    "10.1039/c9ee02873k", // RSC
-    "10.1126/science.abb2507", // Science
-    "10.1073/pnas.2004064117", // PNAS
-    "10.1080/14686996.2020.1730236", // Taylor & Francis
-    "10.1093/nar/gkaa1100", // OUP
+describe("Paywalled, bot-protected publisher pages", function () {
+  // Their article pages answer automated clients with a bot check; the
+  // plugin must still find the SI through other routes.
+  for (const [doi, publisher] of [
+    ["10.1021/jacs.0c06363", "ACS (SI mirrored on Figshare)"],
+    ["10.1002/anie.201916483", "Wiley"],
+    ["10.1073/pnas.2004064117", "PNAS"],
   ]) {
-    it(doi, async function () {
+    it(`${publisher}: ${doi}`, async function () {
+      const { outcome, supps, suppPages, mainPages } = await fetchAndCheck(doi);
+      const info = JSON.stringify(results[doi]);
+      assert.equal(outcome.merge?.status, "merged", info);
+      assert.isAbove(supps.length, 0, info);
+      assert.equal(mainPages, 1 + suppPages, info);
+    });
+  }
+
+  // These articles have no supplementary material at all (Europe PMC lists
+  // none): the right answer is "nothing found", with nothing attached.
+  for (const [doi, publisher] of [
+    ["10.1080/14686996.2020.1730236", "Taylor & Francis"],
+    ["10.1093/nar/gkaa1100", "OUP"],
+  ]) {
+    it(`${publisher}, article without SI: ${doi}`, async function () {
+      const { outcome, supps, mainPages } = await fetchAndCheck(doi);
+      assert.equal(outcome.status, "none", JSON.stringify(results[doi]));
+      assert.equal(supps.length, 0);
+      assert.equal(mainPages, 1);
+    });
+  }
+
+  // Science/RSC paywalled SI is only on their own sites (and PMC), whose bot
+  // checks some networks cannot pass; recorded only.
+  // 10.1007/s00018-021-04053-9: Springer PowerPoint SI; its CDN fails for
+  // Zotero in some sandboxed networks (fine with curl and in normal use).
+  for (const doi of ["10.1126/science.abb2507", "10.1039/c9ee02873k", "10.1007/s00018-021-04053-9"]) {
+    it(`recorded: ${doi}`, async function () {
       await fetchAndCheck(doi);
     });
   }

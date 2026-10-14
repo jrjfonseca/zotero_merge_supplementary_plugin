@@ -26,17 +26,22 @@ Supplementary Info**. For each item the plugin:
    - pages that need JavaScript or show a bot check (Cloudflare "Just a
      moment…") are loaded in Zotero's built-in browser, which also uses your
      institutional cookies;
-   - if the publisher shows nothing, **Europe PMC** is asked for the SI of
-     open-access articles.
-3. Keeps the documents (PDF, DOCX, DOC, ODT, RTF), skipping spreadsheets,
+   - if the publisher's page yields nothing (blocked, paywalled, or no
+     links), other sources are tried in turn: **Figshare**, where ACS,
+     Taylor & Francis, PLOS, SAGE and others mirror SI (this also covers
+     paywalled ACS articles); **Europe PMC**'s SI archive for open-access
+     articles; and the **PubMed Central** article page (e.g. author
+     manuscripts).
+3. Keeps the documents (PDF, DOCX, DOC, ODT, RTF, and PPTX/PPT/ODP slide
+   decks, which some journals use for SI figures), skipping spreadsheets,
    videos, structure files, "Reporting Summary"/"Peer Review File" paperwork,
    and anything already attached.
-4. **Converts Word/ODT/RTF to PDF**:
+4. **Converts Word/ODT/RTF/slides to PDF**:
    - with **LibreOffice** if it is installed (best result; found
      automatically, or set its path in the settings);
    - otherwise DOCX is converted built-in: rendered to HTML and printed to PDF
      by Zotero's own engine (tables and images included), with a plain-text
-     fallback. DOC/ODT/RTF need LibreOffice.
+     fallback. DOC/ODT/RTF and slides need LibreOffice.
 5. Attaches the files to the item and **merges them into the main PDF**, with
    a bookmark at the start of each one.
 
