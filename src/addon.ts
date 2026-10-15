@@ -14,7 +14,7 @@ class Addon {
     };
   };
   public hooks: typeof hooks;
-  public api: object;
+  public api: Record<string, unknown>;
 
   constructor() {
     this.data = {

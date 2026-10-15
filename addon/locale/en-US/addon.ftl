@@ -1,15 +1,118 @@
 startup-begin = Merge Supplementary PDF is loading
 startup-finish = Merge Supplementary PDF is ready
+
 # XUL <menuitem> renders its `label` ATTRIBUTE, not the message value/text
 # content. A value-only message leaves the native MenuManager item blank, so
-# this must be an attribute-style Fluent message.
+# these must be attribute-style Fluent messages.
+menuitem-fetch-label =
+    .label = Fetch & Merge Supplementary Info{ $reason }
+menuitem-fetch-collection-label =
+    .label = Fetch & Merge Supplementary Info for Collection…
 menuitem-merge-label =
-    .label = >> Merge Supplementary PDF <<{ $reason }
-merge-progress = Merging PDFs...
-merge-success = Successfully merged supplementary PDF into main document ({ $mainTitle })
-merge-error-no-item = Please select a single library item
-merge-error-not-enough-pdfs = Item must have exactly 2 PDF attachments (main + supplementary)
-merge-error-no-supplementary = Could not identify supplementary PDF. Rename the supplementary attachment to include "supplementary", "supporting", "SI", or "supp"
-merge-error-encrypted = One or more PDFs appear to be encrypted and cannot be merged
-merge-error-file-missing = PDF file not found on disk: { $path }
+    .label = Merge Attached Supplementary PDFs{ $reason }
+menuitem-restore-label =
+    .label = Restore Original PDF (Undo Merge)
+menuitem-merge-collection-label =
+    .label = Merge Supplementary PDFs in Collection…
+
+merge-progress = Detecting supplementary PDFs…
+merge-progress-batch = Merging supplementary PDFs ({ $current }/{ $total })…
+merge-success =
+    { $count ->
+        [one] Appended 1 supplementary PDF ({ $pages } pages) to “{ $mainTitle }”
+       *[other] Appended { $count } supplementary PDFs ({ $pages } pages) to “{ $mainTitle }”
+    }
+merge-cancelled = Merge cancelled
+merge-summary = Merged { $merged } · Skipped { $skipped } · Failed { $failed }
+merge-summary-hint = Skipped items had no clear supplementary PDF. Merge them one at a time to choose manually.
+merge-error-encrypted = One or more PDFs are encrypted and cannot be merged
 merge-error-generic = Merge failed: { $message }
+
+auto-merge-success =
+    { $count ->
+        [one] Automatically merged a supplementary PDF into “{ $title }”
+       *[other] Automatically merged { $count } supplementary PDFs into “{ $title }”
+    }
+
+restore-progress = Restoring original PDF…
+restore-success =
+    { $count ->
+        [one] Restored the original PDF
+       *[other] Restored the original PDFs of { $count } items
+    }
+
+reason-busy = this item is already being merged
+reason-read-only = the library is read-only
+reason-not-enough-pdfs = need 2 or more PDFs, found { $count }
+reason-legacy-merge = this item was already merged (a .backup.pdf exists)
+reason-no-pages-added = no pages were added
+reason-no-backup = no backup of the original PDF was found
+
+outline-main = Main article
+outline-supplementary = Supplementary information
+
+collection-nothing-to-merge = No item in this collection has two or more unmerged PDFs.
+collection-confirm =
+    { $count ->
+        [one] Merge supplementary PDFs for 1 item in “{ $name }”?
+       *[other] Merge supplementary PDFs for { $count } items in “{ $name }”?
+    }
+
+    Only items whose supplementary PDFs are recognised with confidence are merged; the rest are skipped and left untouched.
+
+picker-title = Choose Supplementary PDFs
+picker-intro = Choose the main article PDF of “{ $title }” and the PDFs to append to it.
+picker-why = Couldn’t decide automatically: { $reason }.
+picker-col-main = Main
+picker-col-append = Append
+picker-col-file = PDF
+picker-confirm = Merge
+picker-cancel = Cancel
+
+pref-automation-title = Automation
+pref-auto-merge =
+    .label = Merge automatically when a supplementary PDF is attached to an item
+pref-auto-merge-help = Only merges when the main and supplementary PDFs are recognised with confidence. Otherwise use the item’s context menu to choose.
+pref-content-detection =
+    .label = Read the first pages of each PDF to recognise supplementary information
+pref-merge-title = Merging
+pref-keep-backup =
+    .label = Keep a .backup.pdf copy of the original main PDF (needed for undo)
+pref-add-outline =
+    .label = Add bookmarks for the start of each supplementary PDF
+pref-trash-supplementary =
+    .label = Move merged supplementary attachments to the trash
+
+fetch-progress-start = Looking for supplementary information…
+fetch-progress-main = Finding the article PDF…
+fetch-progress-page = Reading the article page ({ $host })…
+fetch-progress-download = Downloading supplementary files ({ $current }/{ $total })…
+fetch-progress-figshare = Checking Figshare for supplementary files…
+fetch-progress-pmc = Checking Europe PMC for supplementary files (this can take a minute)…
+fetch-progress-convert = Converting { $name } to PDF…
+fetch-progress-attach =
+    { $count ->
+        [one] Attaching 1 supplementary file…
+       *[other] Attaching { $count } supplementary files…
+    }
+fetch-success = Supplementary information fetched and merged
+fetch-summary = Merged { $merged } · Nothing to merge { $nothing } · Failed { $failed }
+fetch-none-found = No supplementary files found. If you can see them in your browser, drag them onto the item and they will be merged automatically.
+fetch-none-new = The supplementary files are already attached
+fetch-no-main = Supplementary files were attached, but there is no main PDF to merge them into
+fetch-error-no-identifier = The item has no DOI or URL to look up
+fetch-note-convert-failed = Could not convert { $name }: { $reason }
+fetch-note-encrypted = { $name } is encrypted and was skipped
+fetch-note-invalid = { $name } is not a valid PDF and was skipped
+collection-nothing-to-fetch = No item in this collection has a DOI or URL.
+collection-fetch-confirm =
+    { $count ->
+        [one] Fetch and merge supplementary information for 1 item in “{ $name }”?
+       *[other] Fetch and merge supplementary information for { $count } items in “{ $name }”?
+    }
+
+    This downloads files from each article's web page and may take a while.
+
+pref-convert-title = Converting Word files
+pref-libreoffice-path = LibreOffice program (optional; found automatically if installed):
+pref-convert-help = DOC, ODT and RTF files need LibreOffice. DOCX files are converted with or without it, but LibreOffice gives the most faithful result (equations, layout).

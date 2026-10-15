@@ -1,0 +1,167 @@
+// Recognising downloaded files and unpacking archives. Pure code (no Zotero
+// APIs), so it can be tested in Node.
+
+import { Unzip, UnzipInflate } from "fflate";
+
+export type FileType =
+  | "pdf"
+  | "docx"
+  | "doc"
+  | "odt"
+  | "rtf"
+  | "pptx"
+  | "odp"
+  | "zip"
+  | "html"
+  | "unknown";
+
+/** Office formats converted to PDF (slides too: SI figures often come as decks). */
+export type ConvertibleType = Extract<
+  FileType,
+  "docx" | "doc" | "odt" | "rtf" | "pptx" | "odp"
+>;
+
+const CONVERTIBLE = new Set<FileType>(["docx", "doc", "odt", "rtf", "pptx", "odp"]);
+
+export function isConvertible(type: FileType): type is ConvertibleType {
+  return CONVERTIBLE.has(type);
+}
+
+export interface NamedFile {
+  name: string;
+  bytes: Uint8Array;
+}
+
+function startsWith(bytes: Uint8Array, sig: number[], offset = 0): boolean {
+  return sig.every((b, i) => bytes[offset + i] === b);
+}
+
+function includesAscii(bytes: Uint8Array, needle: string, limit?: number) {
+  const n = Array.from(needle, (c) => c.charCodeAt(0));
+  const end = Math.min(bytes.length, limit ?? bytes.length) - n.length;
+  outer: for (let i = 0; i <= end; i++) {
+    for (let j = 0; j < n.length; j++) {
+      if (bytes[i + j] !== n[j]) continue outer;
+    }
+    return true;
+  }
+  return false;
+}
+
+/** Identify a file from its content (extensions and headers lie). */
+export function sniff(bytes: Uint8Array): FileType {
+  if (includesAscii(bytes, "%PDF-", 1024)) return "pdf";
+  if (startsWith(bytes, [0x50, 0x4b, 0x03, 0x04])) {
+    if (includesAscii(bytes, "word/document.xml")) return "docx";
+    if (includesAscii(bytes, "ppt/presentation.xml")) return "pptx";
+    if (includesAscii(bytes, "application/vnd.oasis.opendocument.text", 200)) {
+      return "odt";
+    }
+    if (includesAscii(bytes, "application/vnd.oasis.opendocument.presentation", 200)) {
+      return "odp";
+    }
+    return "zip";
+  }
+  // Legacy Office (OLE): Word or PowerPoint; LibreOffice tells them apart.
+  if (startsWith(bytes, [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])) {
+    return "doc";
+  }
+  if (includesAscii(bytes, "{\\rtf", 16)) return "rtf";
+  const head = new TextDecoder()
+    .decode(bytes.subarray(0, 2048))
+    .trimStart()
+    .toLowerCase();
+  if (/^(<!doctype html|<html|<head|<body|<\?xml[^>]*>\s*<html|<!--)/.test(head)) {
+    return "html";
+  }
+  if (/<html[\s>]/.test(head)) return "html";
+  return "unknown";
+}
+
+const WANTED_IN_ZIP = /\.(pdf|docx?|odt|rtf|pptx?|odp)$/i;
+
+/**
+ * Extract the document files (PDF/DOCX/DOC/ODT/RTF) from a ZIP archive.
+ *
+ * Streams through local file headers instead of relying on the central
+ * directory, so archives that are streamed without one (Europe PMC) or cut
+ * off part-way still yield every complete file.
+ */
+export function extractDocumentsFromZip(
+  bytes: Uint8Array,
+  depth = 0,
+): NamedFile[] {
+  const out: NamedFile[] = [];
+  const nested: Uint8Array[] = [];
+  const unzip = new Unzip((file) => {
+    const base = file.name.split("/").pop() ?? file.name;
+    const isZip = /\.zip$/i.test(base) && depth < 2;
+    if (
+      !(WANTED_IN_ZIP.test(base) || isZip) ||
+      file.name.startsWith("__MACOSX/") ||
+      base.startsWith(".")
+    ) {
+      return;
+    }
+    const chunks: Uint8Array[] = [];
+    file.ondata = (err, data, final) => {
+      if (err) return;
+      chunks.push(data);
+      if (!final) return;
+      // An archive inside the archive (e.g. Europe PMC wrapping a
+      // publisher's "supplemental_files.zip").
+      if (isZip) nested.push(concat(chunks));
+      else out.push({ name: base, bytes: concat(chunks) });
+    };
+    file.start();
+  });
+  unzip.register(UnzipInflate);
+  try {
+    unzip.push(bytes, true);
+  } catch {
+    // Truncated or trailing garbage: keep whatever was complete.
+  }
+  for (const zip of nested) out.push(...extractDocumentsFromZip(zip, depth + 1));
+  return out;
+}
+
+function concat(chunks: Uint8Array[]): Uint8Array {
+  const size = chunks.reduce((n, c) => n + c.length, 0);
+  const out = new Uint8Array(size);
+  let offset = 0;
+  for (const c of chunks) {
+    out.set(c, offset);
+    offset += c.length;
+  }
+  return out;
+}
+
+export function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+/** Make a name safe for a file system, keeping its extension. */
+export function safeFileName(name: string, fallbackExt = "pdf"): string {
+  let clean = name
+    .replace(/[\u0000-\u001f<>:"/\\|?*]+/g, "_")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(-120);
+  if (!clean || /^\.+$/.test(clean)) clean = "supplementary";
+  if (!/\.[a-z0-9]{2,5}$/i.test(clean)) clean += `.${fallbackExt}`;
+  return clean;
+}
+
+/** File name -> caption of each supplementary file in JATS article XML. */
+export function parseJATSCaptions(xml: string): Record<string, string> {
+  const captions: Record<string, string> = {};
+  for (const m of xml.matchAll(/<supplementary-material\b[\s\S]*?<\/supplementary-material>/g)) {
+    const text = m[0].replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    for (const href of m[0].matchAll(/xlink:href="([^"]+)"/g)) {
+      captions[href[1].split("/").pop()!] = text;
+    }
+  }
+  return captions;
+}

@@ -1,0 +1,23 @@
+<linkset>
+  <html:link rel="localization" href="__addonRef__-addon.ftl" />
+</linkset>
+<vbox id="zotero-prefpane-__addonRef__">
+  <groupbox>
+    <label><html:h2 data-l10n-id="pref-automation-title"></html:h2></label>
+    <checkbox preference="autoMerge" data-l10n-id="pref-auto-merge" native="true" />
+    <html:div class="indented-pref" data-l10n-id="pref-auto-merge-help"></html:div>
+    <checkbox preference="useContentDetection" data-l10n-id="pref-content-detection" native="true" />
+  </groupbox>
+  <groupbox>
+    <label><html:h2 data-l10n-id="pref-merge-title"></html:h2></label>
+    <checkbox preference="keepBackup" data-l10n-id="pref-keep-backup" native="true" />
+    <checkbox preference="addOutline" data-l10n-id="pref-add-outline" native="true" />
+    <checkbox preference="trashSupplementary" data-l10n-id="pref-trash-supplementary" native="true" />
+  </groupbox>
+  <groupbox>
+    <label><html:h2 data-l10n-id="pref-convert-title"></html:h2></label>
+    <label data-l10n-id="pref-libreoffice-path"></label>
+    <html:input type="text" preference="libreOfficePath" placeholder="soffice" style="width: 100%" />
+    <html:div class="indented-pref" data-l10n-id="pref-convert-help"></html:div>
+  </groupbox>
+</vbox>

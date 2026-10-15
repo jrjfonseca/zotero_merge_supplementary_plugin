@@ -30,7 +30,15 @@ declare const IOUtils: {
     destPath: string,
     options?: { noOverwrite?: boolean },
   ): Promise<void>;
-  remove(path: string, options?: { ignoreAbsent?: boolean }): Promise<void>;
+  remove(
+    path: string,
+    options?: { ignoreAbsent?: boolean; recursive?: boolean },
+  ): Promise<void>;
+  writeUTF8(path: string, data: string): Promise<number>;
+  makeDirectory(
+    path: string,
+    options?: { ignoreExisting?: boolean; createAncestors?: boolean },
+  ): Promise<void>;
   move(
     sourcePath: string,
     destPath: string,
