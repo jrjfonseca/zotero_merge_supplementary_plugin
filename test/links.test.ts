@@ -7,6 +7,7 @@ import {
   findRedirect,
   guessedFileURLs,
   looksLikeChallenge,
+  looksLikeTransit,
 } from "../src/modules/fetch/links.ts";
 import { parseHTML } from "./helpers.ts";
 
@@ -30,6 +31,25 @@ test("Springer Nature: SI section, skipping reporting summary and videos", () =>
   assert.deepEqual(
     found.map((l) => l.url.split("/").pop()),
     ["41586_2021_1_MOESM1_ESM.pdf"],
+  );
+});
+
+test("RSC on Silverchair: supplement links without extension or DOI", () => {
+  const html = `<html><body>
+    <a href="/se/article-pdf/7/6/1502/8788200/d2se01519f.pdf">PDF</a>
+    <div class="widget-ArticleDataSupplements" data-widget-name="ArticleDataSupplements">
+      <h2 id="supplementary-data" class="section-title">Supplementary data</h2>
+      <div class="dataSuppLink">
+        <a class="openInAnotherWindow" data-doctype="dataSupplementDoc" target="_blank"
+          href="/se/article-supplement/787932/pdf/d2se01519f1_suppl/"
+          aria-label="Download Supplementary information (PDF)" rel="nofollow">
+          <div class="caption"><div class="title">Supplementary information (PDF)</div></div></a>- pdf file
+      </div></div>
+  </body></html>`;
+  const found = links(html, "https://pubs.rsc.org/se/article/7/6/1502/7148394/Suppressing", "10.1039/d2se01519f");
+  assert.deepEqual(
+    found.map((l) => [l.url, l.isPage]),
+    [["https://pubs.rsc.org/se/article-supplement/787932/pdf/d2se01519f1_suppl/", false]],
   );
 });
 
@@ -115,4 +135,13 @@ test("redirects, bot checks and alternative entry points", () => {
   assert.ok(!looksLikeChallenge(parseHTML("<title>A paper</title><p>text</p>")));
   const guesses = guessedFileURLs("10.1016/x", ["https://linkinghub.elsevier.com/retrieve/pii/S0140673620301835"]);
   assert.ok(guesses.includes("https://ars.els-cdn.com/content/image/1-s2.0-S0140673620301835-mmc1.pdf"));
+});
+
+test("transit pages: sign-on auto-submit form, not an article", () => {
+  const sso = parseHTML(`<html><body><form method="post" action="https://pubs.rsc.org/ExternalAuthentication/OIDCLogin">
+    <input type="hidden" name="code" value="81ED"/><noscript>&lt;button&gt;Click to continue&lt;/button&gt;</noscript></form>
+    <script>window.addEventListener('load', function(){document.forms[0].submit();});</script></body></html>`);
+  assert.equal(looksLikeTransit(sso), true);
+  const article = parseHTML(`<html><body><h1>Title</h1><p>${"Abstract text. ".repeat(30)}</p></body></html>`);
+  assert.equal(looksLikeTransit(article), false);
 });

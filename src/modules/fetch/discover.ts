@@ -88,6 +88,14 @@ function hostOf(url: string): string {
   }
 }
 
+function originOf(url: string): string | undefined {
+  try {
+    return `${new URL(url).origin}/`;
+  } catch {
+    return undefined;
+  }
+}
+
 export class Discovery {
   private net: Net;
   private report: Report;
@@ -126,6 +134,7 @@ export class Discovery {
       const target = page?.url ?? url;
       const rendered = await this.net.renderPage(target);
       this.rendered.add(target);
+      if (rendered) this.rendered.add(rendered.url);
       if (rendered && rendered.status < 400) return rendered;
     }
     return page && page.status < 400 ? page : null;
@@ -233,13 +242,22 @@ export class Discovery {
     // Bot check on the file host: pass it once in the browser engine (which
     // shares cookies with plain requests), then try those files again. Also
     // gives temporary errors ("try again in 30 seconds") time to clear.
+    // Files on another host than the article (e.g. a CDN) need their own
+    // check passed: open that host's home page.
     if (refused.length) {
-      if (referrer && !this.rendered.has(referrer)) {
-        this.rendered.add(referrer);
-        await this.net.renderPage(referrer);
-      } else {
-        await this.net.sleep?.(5000);
+      const toOpen = referrer ? [referrer] : [];
+      for (const c of refused) {
+        const home = originOf(c.url);
+        if (home && !toOpen.some((u) => hostOf(u) === hostOf(home))) toOpen.push(home);
       }
+      let opened = false;
+      for (const url of toOpen) {
+        if ([...this.rendered].some((r) => hostOf(r) === hostOf(url))) continue;
+        this.rendered.add(url);
+        await this.net.renderPage(url);
+        opened = true;
+      }
+      if (!opened) await this.net.sleep?.(5000);
       const retry = refused.splice(0);
       for (const c of retry) {
         const dl = await this.net.download(c.url, referrer);
