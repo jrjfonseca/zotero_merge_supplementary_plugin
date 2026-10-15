@@ -22,7 +22,8 @@ function fakeNet(
     status: html === CHALLENGE ? 403 : 200,
     viaBrowser,
   });
-  let cleared = false;
+  // Hosts whose bot check was passed (cookies are per host)
+  const cleared = new Set<string>();
   const retried = new Set<string>();
   const net: Net = {
     async fetchPage(url) {
@@ -33,7 +34,7 @@ function fakeNet(
     },
     async renderPage(url) {
       log.push(`RENDER ${url}`);
-      cleared = true;
+      cleared.add(new URL(url).host);
       const html = rendered[url];
       return html ? page(url, html, true) : null;
     },
@@ -42,7 +43,7 @@ function fakeNet(
       let r = site[url];
       if (typeof r === "number" && retried.has(url) && site[`${url}#retry`]) r = site[`${url}#retry`];
       if (typeof r === "number") retried.add(url);
-      if (r === 403 && cleared && site[`${url}#after-check`]) r = site[`${url}#after-check`];
+      if (r === 403 && cleared.has(new URL(url).host) && site[`${url}#after-check`]) r = site[`${url}#after-check`];
       if (typeof r === "number") return { url, status: r };
       if (r === undefined) return { url, status: 404 };
       return { url, status: 200, bytes: typeof r === "string" ? strToU8(r) : r };
@@ -112,6 +113,19 @@ test("refused file downloads are retried after passing the bot check", async () 
   const files = await new Discovery(net, () => {}, "10.1/d").run(startURLs("10.1/d"));
   assert.equal(files.length, 1);
   assert.equal(log.filter((l) => l === `DL ${url}`).length, 2);
+});
+
+test("a file host other than the article's gets its own bot check passed", async () => {
+  const article = "https://doi.org/10.1/d2";
+  const url = "https://files.example/suppdata/d2_si_001.pdf";
+  const { net, log } = fakeNet(
+    { [article]: CHALLENGE, [url]: 403, [`${url}#after-check`]: await makePDF(1) },
+    { [article]: `<a href="${url}">Supporting Information</a>` },
+  );
+  const files = await new Discovery(net, () => {}, "10.1/d2").run(startURLs("10.1/d2"));
+  assert.equal(files.length, 1);
+  assert.ok(log.includes("RENDER https://files.example/"), log.join("\n"));
+  assert.equal(log.filter((l) => l === `RENDER ${article}`).length, 1);
 });
 
 test("falls back to Europe PMC when the publisher has nothing", async () => {

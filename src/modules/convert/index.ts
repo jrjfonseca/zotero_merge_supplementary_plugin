@@ -150,6 +150,8 @@ async function convertWithLibreOffice(
 // ---------------------------------------------------------------------------
 // Gecko print-to-PDF
 
+const PRINT_TIMEOUT = 90000;
+
 async function printHTMLToPDF(html: string): Promise<Uint8Array> {
   const HiddenBrowser = await getHiddenBrowserClass();
   const dir = await makeTempDir("print");
@@ -157,64 +159,73 @@ async function printHTMLToPDF(html: string): Promise<Uint8Array> {
   await IOUtils.writeUTF8(path, html);
   // Printing needs a browser in a real window, not a windowless frame.
   const browser = new HiddenBrowser({ useHiddenFrame: false });
+  // Loading or printing can stall without an error (seen with large SI);
+  // give up so the simple renderer still produces a PDF.
+  const timeout = Zotero.Promise.delay(PRINT_TIMEOUT).then(() => {
+    throw new Error(`print timed out after ${PRINT_TIMEOUT / 1000} s`);
+  });
   try {
-    if (!(await browser.load(path))) throw new Error("could not load HTML");
-    if (typeof browser.waitForDocument === "function") {
-      await browser.waitForDocument();
-    } else {
-      await Zotero.Promise.delay(1500);
-    }
-
-    const Ci = Components.interfaces;
-    const settings = (Components.classes as any)["@mozilla.org/gfx/printsettings-service;1"]
-      .getService(Ci.nsIPrintSettingsService)
-      .createNewPrintSettings();
-    // Print settings change between Gecko versions; assigning one that no
-    // longer exists throws, so set each optional one defensively.
-    const set = (name: string, value: unknown) => {
-      try {
-        if (name in settings) settings[name] = value;
-      } catch (e) {
-        ztoolkit.log(`print setting ${name} not supported`, e);
-      }
-    };
-    set("isInitializedFromPrinter", true);
-    set("isInitializedFromPrefs", true);
-    set("printSilent", true);
-    set("showPrintProgress", false);
-    set("printerName", "Mozilla Save to PDF");
-    set("paperSizeUnit", Ci.nsIPrintSettings.kPaperSizeInches);
-    set("paperWidth", 8.27); // A4
-    set("paperHeight", 11.69);
-    set("usePageRuleSizeAsPaperSize", true);
-    for (const side of ["Top", "Bottom", "Left", "Right"]) {
-      set(`margin${side}`, 0.4);
-    }
-    for (const pos of ["Left", "Center", "Right"]) {
-      set(`headerStr${pos}`, "");
-      set(`footerStr${pos}`, "");
-    }
-    set("printBGColors", true);
-    set("printBGImages", true);
-    set("shrinkToFit", true);
-    // Required ones: let these throw if they ever stop working.
-    settings.outputFormat = Ci.nsIPrintSettings.kOutputFormatPDF;
-
-    const storage = (Components.classes as any)["@mozilla.org/storagestream;1"].createInstance(Ci.nsIStorageStream);
-    storage.init(65536, 0xffffffff);
-    settings.outputDestination = Ci.nsIPrintSettings.kOutputDestinationStream;
-    settings.outputStream = storage.getOutputStream(0);
-
-    await browser.browsingContext.print(settings);
-
-    const input = (Components.classes as any)["@mozilla.org/binaryinputstream;1"].createInstance(Ci.nsIBinaryInputStream);
-    input.setInputStream(storage.newInputStream(0));
-    const bytes = new Uint8Array(input.readByteArray(input.available()));
-    input.close();
-    if (bytes.length < 100) throw new Error("print produced no output");
-    return bytes;
+    return await Promise.race([print(browser, path), timeout]);
   } finally {
     browser.destroy();
     await IOUtils.remove(dir, { recursive: true, ignoreAbsent: true });
   }
+}
+
+async function print(browser: any, path: string): Promise<Uint8Array> {
+  if (!(await browser.load(path))) throw new Error("could not load HTML");
+  if (typeof browser.waitForDocument === "function") {
+    await browser.waitForDocument();
+  } else {
+    await Zotero.Promise.delay(1500);
+  }
+
+  const Ci = Components.interfaces;
+  const settings = (Components.classes as any)["@mozilla.org/gfx/printsettings-service;1"]
+    .getService(Ci.nsIPrintSettingsService)
+    .createNewPrintSettings();
+  // Print settings change between Gecko versions; assigning one that no
+  // longer exists throws, so set each optional one defensively.
+  const set = (name: string, value: unknown) => {
+    try {
+      if (name in settings) settings[name] = value;
+    } catch (e) {
+      ztoolkit.log(`print setting ${name} not supported`, e);
+    }
+  };
+  set("isInitializedFromPrinter", true);
+  set("isInitializedFromPrefs", true);
+  set("printSilent", true);
+  set("showPrintProgress", false);
+  set("printerName", "Mozilla Save to PDF");
+  set("paperSizeUnit", Ci.nsIPrintSettings.kPaperSizeInches);
+  set("paperWidth", 8.27); // A4
+  set("paperHeight", 11.69);
+  set("usePageRuleSizeAsPaperSize", true);
+  for (const side of ["Top", "Bottom", "Left", "Right"]) {
+    set(`margin${side}`, 0.4);
+  }
+  for (const pos of ["Left", "Center", "Right"]) {
+    set(`headerStr${pos}`, "");
+    set(`footerStr${pos}`, "");
+  }
+  set("printBGColors", true);
+  set("printBGImages", true);
+  set("shrinkToFit", true);
+  // Required ones: let these throw if they ever stop working.
+  settings.outputFormat = Ci.nsIPrintSettings.kOutputFormatPDF;
+
+  const storage = (Components.classes as any)["@mozilla.org/storagestream;1"].createInstance(Ci.nsIStorageStream);
+  storage.init(65536, 0xffffffff);
+  settings.outputDestination = Ci.nsIPrintSettings.kOutputDestinationStream;
+  settings.outputStream = storage.getOutputStream(0);
+
+  await browser.browsingContext.print(settings);
+
+  const input = (Components.classes as any)["@mozilla.org/binaryinputstream;1"].createInstance(Ci.nsIBinaryInputStream);
+  input.setInputStream(storage.newInputStream(0));
+  const bytes = new Uint8Array(input.readByteArray(input.available()));
+  input.close();
+  if (bytes.length < 100) throw new Error("print produced no output");
+  return bytes;
 }

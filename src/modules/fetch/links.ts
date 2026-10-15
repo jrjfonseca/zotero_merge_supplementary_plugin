@@ -101,6 +101,7 @@ const FILE_URL = [
   /journal\.[a-z]+\.\d+\.s\d{3}/i, // PLOS file ids
   /\/bin\/[^/]+\.(pdf|docx?)$/i, // PMC
   /\/file\/(Data_Sheet|Table|Presentation|Image|Video)_\d+/i, // Frontiers
+  /\/article-supplement\/\d+\//i, // Silverchair: RSC, AIP, OUP
 ];
 
 // Words in URLs that point at SI, files or listing pages alike.
@@ -145,6 +146,14 @@ export function looksLikeChallenge(doc: Document): boolean {
   return /cf-browser-verification|enable javascript and cookies to continue|cf_chl_/i.test(
     body + String(doc.documentElement?.innerHTML ?? "").slice(0, 5000),
   );
+}
+
+/**
+ * A page that is only a step on the way: an empty document, or a form that
+ * scripts submit at once (e.g. RSC's sign-on redirect).
+ */
+export function looksLikeTransit(doc: Document): boolean {
+  return (doc.body?.textContent ?? "").replace(/\s+/g, " ").trim().length < 200;
 }
 
 export function extensionOf(url: string): string | undefined {

@@ -4,9 +4,31 @@
 import { getHiddenBrowserClass, localBytes } from "../../utils/gecko";
 import type { Download, Net, Page, RepositoryFile } from "./discover";
 import { parseJATSCaptions } from "./files";
-import { looksLikeChallenge } from "./links";
+import { looksLikeChallenge, looksLikeTransit } from "./links";
 
 const MAX_FILE_BYTES = 200 * 1024 * 1024;
+
+// Bot checks (Cloudflare) refuse a user agent with "Zotero/x" in it, and the
+// cookie that proves a check was passed only works with the user agent that
+// passed it. So the hidden browser uses a plain Firefox user agent, and the
+// hosts it opens are registered with Zotero 10's VersionHeader, which then
+// sends plain requests to them with the same user agent.
+
+function plainUA(): string | undefined {
+  try {
+    return (Zotero as any).VersionHeader?.getPlainFirefoxUA?.();
+  } catch {
+    return undefined;
+  }
+}
+
+function usePlainUA(url: string | undefined): void {
+  try {
+    if (url) (Zotero as any).VersionHeader?.registerPlainUAHost?.(new URL(url).hostname);
+  } catch {
+    // Zotero 7-9: no user-agent handling to hook into
+  }
+}
 
 export function parse(html: string): Document {
   return new DOMParser().parseFromString(html, "text/html");
@@ -55,7 +77,9 @@ export async function fetchPageBrowser(url: string): Promise<Page | null> {
   let browser: any;
   try {
     const HiddenBrowser = await getHiddenBrowserClass();
-    browser = new HiddenBrowser();
+    const customUserAgent = plainUA();
+    browser = new HiddenBrowser(customUserAgent ? { customUserAgent } : {});
+    usePlainUA(url);
     if (!(await browser.load(url))) return null;
     const deadline = Date.now() + 30000;
     let doc: Document;
@@ -66,10 +90,13 @@ export async function fetchPageBrowser(url: string): Promise<Page | null> {
       // Give client-side rendering a moment to fill in the SI section.
       await Zotero.Promise.delay(2500);
       doc = await browser.getDocument();
-      if (!looksLikeChallenge(doc) || Date.now() > deadline) break;
+      const waiting = looksLikeChallenge(doc) || looksLikeTransit(doc);
+      if (!waiting || Date.now() > deadline) break;
       await Zotero.Promise.delay(2500);
     }
     const html = String(doc.documentElement?.outerHTML ?? "");
+    // Later plain requests to this host must reuse the browser's cookies.
+    usePlainUA(browser.currentURI?.spec);
     return {
       url: browser.currentURI?.spec || url,
       html,
