@@ -174,6 +174,10 @@ npm run try-fetch -- 10.1371/journal.pone.0229668 10.3389/fmicb.2020.01800
 
 The built `.xpi` will be at `.scaffold/build/merge-supplementary-pdf.xpi`.
 
+To publish a release, push a version tag (e.g. `git tag v0.4.0 && git push
+origin v0.4.0`); the Release workflow builds the plugin and attaches the
+`.xpi` to a GitHub release.
+
 ## License
 
 AGPL-3.0-or-later

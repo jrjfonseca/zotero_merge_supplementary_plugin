@@ -1,0 +1,30 @@
+# Builds the plugin and attaches the .xpi to a GitHub release when a version
+# tag (e.g. v0.4.0) is pushed.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Name the .xpi after the version
+        run: cp .scaffold/build/merge-supplementary-pdf.xpi "merge-supplementary-pdf-${GITHUB_REF_NAME}.xpi"
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: merge-supplementary-pdf-${{ github.ref_name }}.xpi
+          generate_release_notes: true
