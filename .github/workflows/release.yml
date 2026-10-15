@@ -1,11 +1,14 @@
-# Builds the plugin and attaches the .xpi to a GitHub release when a version
-# tag (e.g. v0.4.0) is pushed.
+# Builds the plugin and attaches the .xpi to a GitHub release.
+#
+# - On a push to main: publishes v<version in package.json>, unless that
+#   release already exists (bump "version" in package.json to release).
+# - On a pushed version tag (e.g. v0.4.0): publishes that tag.
 name: Release
 
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main]
+    tags: ["v*"]
 
 permissions:
   contents: write
@@ -15,16 +18,41 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Decide the release tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            tag="$GITHUB_REF_NAME"
+          else
+            tag="v$(node -p "require('./package.json').version")"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_REF_TYPE" = "branch" ] && gh release view "$tag" > /dev/null 2>&1; then
+            echo "Release $tag already exists; nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/setup-node@v4
+        if: steps.tag.outputs.skip != 'true'
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npm test
-      - run: npm run build
+      - if: steps.tag.outputs.skip != 'true'
+        run: npm ci
+      - if: steps.tag.outputs.skip != 'true'
+        run: npm test
+      - if: steps.tag.outputs.skip != 'true'
+        run: npm run build
       - name: Name the .xpi after the version
-        run: cp .scaffold/build/merge-supplementary-pdf.xpi "merge-supplementary-pdf-${GITHUB_REF_NAME}.xpi"
+        if: steps.tag.outputs.skip != 'true'
+        run: cp .scaffold/build/merge-supplementary-pdf.xpi "merge-supplementary-pdf-${{ steps.tag.outputs.tag }}.xpi"
       - uses: softprops/action-gh-release@v2
+        if: steps.tag.outputs.skip != 'true'
         with:
-          files: merge-supplementary-pdf-${{ github.ref_name }}.xpi
+          tag_name: ${{ steps.tag.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          files: merge-supplementary-pdf-${{ steps.tag.outputs.tag }}.xpi
           generate_release_notes: true
